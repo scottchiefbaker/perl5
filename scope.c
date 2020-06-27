@@ -833,6 +833,7 @@ static const U8 arg_counts[] = {
     1, /* SAVEt_STACK_POS          */
     1, /* SAVEt_READONLY_OFF       */
     1, /* SAVEt_FREEPADNAME        */
+    1, /* SAVEt_STRLEN_SMALL       */
     2, /* SAVEt_AV                 */
     2, /* SAVEt_DESTRUCTOR         */
     2, /* SAVEt_DESTRUCTOR_X       */
