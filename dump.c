@@ -21,7 +21,7 @@
  *
  * It also holds the debugging version of the  runops function.
 
-=head1 Display and Dump functions
+=for apidoc_section Display and Dump functions
  */
 
 #include "EXTERN.h"
@@ -141,6 +141,13 @@ Returns a pointer to the escaped text as held by C<dsv>.
 =for apidoc Amnh||PERL_PV_ESCAPE_RE
 =for apidoc Amnh||PERL_PV_ESCAPE_UNI
 =for apidoc Amnh||PERL_PV_ESCAPE_UNI_DETECT
+
+=cut
+
+Unused or not for public use
+=for apidoc Cmnh||PERL_PV_PRETTY_REGPROP
+=for apidoc Cmnh||PERL_PV_PRETTY_DUMP
+=for apidoc Cmnh||PERL_PV_PRETTY_NOCLEAR
 
 =cut
 */
@@ -367,7 +374,6 @@ Perl_pv_display(pTHX_ SV *dsv, const char *pv, STRLEN cur, STRLEN len, STRLEN pv
 char *
 Perl_sv_peek(pTHX_ SV *sv)
 {
-    dVAR;
     SV * const t = sv_newmortal();
     int unref = 0;
     U32 type;
@@ -528,10 +534,6 @@ Perl_sv_peek(pTHX_ SV *sv)
 	sv_catpvs(t, " [tainted]");
     return SvPV_nolen(t);
 }
-
-/*
-=head1 Debugging Utilities
-*/
 
 void
 Perl_dump_indent(pTHX_ I32 level, PerlIO *file, const char* pat, ...)
@@ -929,7 +931,6 @@ Perl_pmop_dump(pTHX_ PMOP *pm)
 STATIC UV
 S_sequence_num(pTHX_ const OP *o)
 {
-    dVAR;
     SV     *op,
           **seq;
     const char *key;
@@ -1733,7 +1734,6 @@ const struct flag_to_name regexp_core_intflags_names[] = {
 void
 Perl_do_sv_dump(pTHX_ I32 level, PerlIO *file, SV *sv, I32 nest, I32 maxnest, bool dumpops, STRLEN pvlim)
 {
-    dVAR;
     SV *d;
     const char *s;
     U32 flags;

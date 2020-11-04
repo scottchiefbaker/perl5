@@ -16,7 +16,7 @@
  */
 
 /*
-=head1 Magical Functions
+=head1 Magic
 "Magic" is special data attached to SV structures in order to give them
 "magical" properties.  When any Perl code tries to read from, or assign to,
 an SV marked as magical, it calls the 'get' or 'set' function associated
@@ -33,6 +33,8 @@ of functions that implement the get(), set(), length() etc functions,
 plus space for some flags and pointers.  For example, a tied variable has
 a MAGIC structure that contains a pointer to the object associated with the
 tie.
+
+=for apidoc Ayh||MAGIC
 
 =cut
 
@@ -552,16 +554,10 @@ S_mg_free_struct(pTHX_ SV *sv, MAGIC *mg)
     if (vtbl && vtbl->svt_free)
 	vtbl->svt_free(aTHX_ sv, mg);
 
-    if (mg->mg_type == PERL_MAGIC_collxfrm && mg->mg_len >= 0)
-        /* collate magic uses string len not buffer len, so
-         * free even with mg_len == 0 */
+    if (mg->mg_len > 0)
         Safefree(mg->mg_ptr);
-    else if (mg->mg_ptr && mg->mg_type != PERL_MAGIC_regex_global) {
-	if (mg->mg_len > 0 || mg->mg_type == PERL_MAGIC_utf8)
-	    Safefree(mg->mg_ptr);
-	else if (mg->mg_len == HEf_SVKEY)
-	    SvREFCNT_dec(MUTABLE_SV(mg->mg_ptr));
-    }
+    else if (mg->mg_len == HEf_SVKEY)
+        SvREFCNT_dec(MUTABLE_SV(mg->mg_ptr));
 
     if (mg->mg_flags & MGf_REFCOUNTED)
 	SvREFCNT_dec(mg->mg_obj);
@@ -846,6 +842,7 @@ S_fixup_errno_string(pTHX_ SV* sv)
 }
 
 /*
+=for apidoc_section Errno
 =for apidoc sv_string_from_errnum
 
 Generates the message string describing an OS error and returns it as
@@ -1667,7 +1664,6 @@ Perl_despatch_signals(pTHX)
 int
 Perl_magic_setsig(pTHX_ SV *sv, MAGIC *mg)
 {
-    dVAR;
     I32 i;
     SV** svp = NULL;
     /* Need to be careful with SvREFCNT_dec(), because that can have side
@@ -1910,6 +1906,7 @@ Perl_magic_setnkeys(pTHX_ SV *sv, MAGIC *mg)
 }
 
 /*
+=for apidoc_section Magic
 =for apidoc magic_methcall
 
 Invoke a magic method (like FETCH).
@@ -2601,6 +2598,23 @@ Perl_magic_setmglob(pTHX_ SV *sv, MAGIC *mg)
     return 0;
 }
 
+
+int
+Perl_magic_freemglob(pTHX_ SV *sv, MAGIC *mg)
+{
+    PERL_ARGS_ASSERT_MAGIC_FREEMGLOB;
+    PERL_UNUSED_ARG(sv);
+
+    /* glob magic uses mg_len as a string length rather than a buffer
+     * length, so we need to free even with mg_len == 0: hence we can't
+     * rely on standard magic free handling */
+    assert(mg->mg_type == PERL_MAGIC_regex_global && mg->mg_len >= -1);
+    Safefree(mg->mg_ptr);
+    mg->mg_ptr = NULL;
+    return 0;
+}
+
+
 int
 Perl_magic_setuvar(pTHX_ SV *sv, MAGIC *mg)
 {
@@ -2645,6 +2659,24 @@ Perl_magic_setcollxfrm(pTHX_ SV *sv, MAGIC *mg)
     }
     return 0;
 }
+
+int
+Perl_magic_freecollxfrm(pTHX_ SV *sv, MAGIC *mg)
+{
+    PERL_ARGS_ASSERT_MAGIC_FREECOLLXFRM;
+    PERL_UNUSED_ARG(sv);
+
+    /* Collate magic uses mg_len as a string length rather than a buffer
+     * length, so we need to free even with mg_len == 0: hence we can't
+     * rely on standard magic free handling */
+    if (mg->mg_len >= 0) {
+        assert(mg->mg_type == PERL_MAGIC_collxfrm);
+        Safefree(mg->mg_ptr);
+        mg->mg_ptr = NULL;
+    }
+
+    return 0;
+}
 #endif /* USE_LOCALE_COLLATE */
 
 /* Just clear the UTF-8 cache data. */
@@ -2659,6 +2691,22 @@ Perl_magic_setutf8(pTHX_ SV *sv, MAGIC *mg)
     mg->mg_len = -1;		/* The mg_len holds the len cache. */
     return 0;
 }
+
+int
+Perl_magic_freeutf8(pTHX_ SV *sv, MAGIC *mg)
+{
+    PERL_ARGS_ASSERT_MAGIC_FREEUTF8;
+    PERL_UNUSED_ARG(sv);
+
+    /* utf8 magic uses mg_len as a string length rather than a buffer
+     * length, so we need to free even with mg_len == 0: hence we can't
+     * rely on standard magic free handling */
+    assert(mg->mg_type == PERL_MAGIC_utf8 && mg->mg_len >= -1);
+    Safefree(mg->mg_ptr);
+    mg->mg_ptr = NULL;
+    return 0;
+}
+
 
 int
 Perl_magic_setlvref(pTHX_ SV *sv, MAGIC *mg)
@@ -2722,7 +2770,6 @@ S_set_dollarzero(pTHX_ SV *sv)
     PERL_TSA_REQUIRES(PL_dollarzero_mutex)
 {
 #ifdef USE_ITHREADS
-    dVAR;
 #endif
     const char *s;
     STRLEN len;
@@ -2801,7 +2848,6 @@ int
 Perl_magic_set(pTHX_ SV *sv, MAGIC *mg)
 {
 #ifdef USE_ITHREADS
-    dVAR;
 #endif
     I32 paren;
     const REGEXP * rx;
@@ -3000,7 +3046,7 @@ Perl_magic_set(pTHX_ SV *sv, MAGIC *mg)
 	}
 #ifdef WIN32
 	else if (strEQ(mg->mg_ptr+1, "IN32_SLOPPY_STAT")) {
-	    w32_sloppystat = (bool)sv_true(sv);
+	    w32_sloppystat = SvTRUE(sv);
 	}
 #endif
 	break;
@@ -3305,6 +3351,31 @@ Perl_magic_set(pTHX_ SV *sv, MAGIC *mg)
     }
     return 0;
 }
+
+/*
+=for apidoc_section Signals
+=for apidoc whichsig
+=for apidoc_item whichsig_pv
+=for apidoc_item whichsig_pvn
+=for apidoc_item whichsig_sv
+
+These all convert a signal name into its corresponding signal number;
+returning -1 if no corresponding number was found.
+
+They differ only in the source of the signal name:
+
+C<whichsig_pv> takes the name from the C<NUL>-terminated string starting at
+C<sig>.
+
+C<whichsig> is merely a different spelling, a synonym, of C<whichsig_pv>.
+
+C<whichsig_pvn> takes the name from the string starting at C<sig>, with length
+C<len> bytes.
+
+C<whichsig_sv> takes the name from the PV stored in the SV C<sigsv>.
+
+=cut
+*/
 
 I32
 Perl_whichsig_sv(pTHX_ SV *sigsv)
@@ -3642,6 +3713,7 @@ S_unwind_handler_stack(pTHX_ const void *p)
 }
 
 /*
+=for apidoc_section Magic
 =for apidoc magic_sethint
 
 Triggered by a store to C<%^H>, records the key/value pair to

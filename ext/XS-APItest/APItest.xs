@@ -374,10 +374,10 @@ blockhook_csc_start(pTHX_ int full)
     SAVEGENERICSV(GvAV(MY_CXT.cscgv));
 
     if (cur) {
-        I32 i;
+        Size_t i;
         AV *const new_av = newAV();
 
-        for (i = 0; i <= av_tindex(cur); i++) {
+        for (i = 0; i < av_count(cur); i++) {
             av_store(new_av, i, newSVsv(*av_fetch(cur, i, 0)));
         }
 
@@ -470,19 +470,25 @@ my_peep (pTHX_ OP *o)
 }
 
 STATIC void
-my_rpeep (pTHX_ OP *o)
+my_rpeep (pTHX_ OP *first)
 {
     dMY_CXT;
+    OP *o, *t;
 
-    if (!o)
+    if (!first)
 	return;
 
-    MY_CXT.orig_rpeep(aTHX_ o);
+    MY_CXT.orig_rpeep(aTHX_ first);
 
     if (!MY_CXT.peep_recording)
 	return;
 
-    for (; o; o = o->op_next) {
+    for (o = first, t = first; o; o = o->op_next, t = t->op_next) {
+	if (o->op_type == OP_CONST && cSVOPx_sv(o) && SvPOK(cSVOPx_sv(o))) {
+	    av_push(MY_CXT.rpeep_recorder, newSVsv(cSVOPx_sv(o)));
+	}
+	o = o->op_next;
+	if (!o || o == t) break;
 	if (o->op_type == OP_CONST && cSVOPx_sv(o) && SvPOK(cSVOPx_sv(o))) {
 	    av_push(MY_CXT.rpeep_recorder, newSVsv(cSVOPx_sv(o)));
 	}
@@ -2008,7 +2014,7 @@ test_share_unshare_pvn(input)
 	OUTPUT:
 	RETVAL
 
-#if PERL_VERSION >= 9
+#if PERL_VERSION_GE(5,9,0)
 
 bool
 refcounted_he_exists(key, level=0)
@@ -6789,6 +6795,59 @@ test_toTITLE_utf8(SV * p, int type)
     OUTPUT:
         RETVAL
 
+AV *
+test_delimcpy(SV * from_sv, STRLEN trunc_from, char delim, STRLEN to_len, STRLEN trunc_to, char poison = '?')
+    PREINIT:
+        char * from;
+        I32 retlen;
+        char * from_pos_after_copy;
+        char * to;
+    CODE:
+        from = SvPV_nolen(from_sv);
+        Newx(to, to_len, char);
+	PoisonWith(to, to_len, char, poison);
+        assert(trunc_from <= SvCUR(from_sv));
+        /* trunc_to allows us to throttle the output size available */
+        assert(trunc_to <= to_len);
+        from_pos_after_copy = delimcpy(to, to + trunc_to,
+                                       from, from + trunc_from,
+                                       delim, &retlen);
+        RETVAL = newAV();
+        sv_2mortal((SV*)RETVAL);
+        av_push(RETVAL, newSVpvn(to, to_len));
+        av_push(RETVAL, newSVuv(retlen));
+        av_push(RETVAL, newSVuv(from_pos_after_copy - from));
+        Safefree(to);
+    OUTPUT:
+        RETVAL
+
+AV *
+test_delimcpy_no_escape(SV * from_sv, STRLEN trunc_from, char delim, STRLEN to_len, STRLEN trunc_to, char poison = '?')
+    PREINIT:
+        char * from;
+        AV *av;
+        I32 retlen;
+        char * from_pos_after_copy;
+        char * to;
+    CODE:
+        from = SvPV_nolen(from_sv);
+        Newx(to, to_len, char);
+	PoisonWith(to, to_len, char, poison);
+        assert(trunc_from <= SvCUR(from_sv));
+        /* trunc_to allows us to throttle the output size available */
+        assert(trunc_to <= to_len);
+        from_pos_after_copy = delimcpy_no_escape(to, to + trunc_to,
+                                       from, from + trunc_from,
+                                       delim, &retlen);
+        av = newAV();
+        av_push(av, newSVpvn(to, to_len));
+        av_push(av, newSVuv(retlen));
+        av_push(av, newSVuv(from_pos_after_copy - from));
+        Safefree(to);
+        RETVAL = av;
+    OUTPUT:
+        RETVAL
+
 SV *
 test_Gconvert(SV * number, SV * num_digits)
     PREINIT:
@@ -6911,6 +6970,7 @@ u8_to_u16_le(SV *sv, STRLEN ofs)
                 u64= U8TO64_LE(pv+ofs);
                 RETVAL= (UV)u64;
 #else
+                PERL_UNUSED_VAR(u64);
                 croak("not a 64 bit perl IVSIZE=%d",IVSIZE);
 #endif
                 break;

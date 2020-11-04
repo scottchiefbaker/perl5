@@ -417,7 +417,7 @@ PP(pp_multiconcat)
                                 for ease of testing and setting) */
     /* for each arg, holds the result of an SvPV() call */
     struct multiconcat_svpv {
-        char          *pv;
+        const char   *pv;
         SSize_t       len;
     }
         *targ_chain,         /* chain of slots where targ has appeared on RHS */
@@ -533,7 +533,7 @@ PP(pp_multiconcat)
                 /* an undef value in the presence of warnings may trigger
                  * side affects */
                 goto do_magical;
-            svpv_end->pv = (char*)"";
+            svpv_end->pv = "";
             len = 0;
         }
         else
@@ -1262,14 +1262,20 @@ PP(pp_eq)
 {
     dSP;
     SV *left, *right;
+    U32 flags_and, flags_or;
 
     tryAMAGICbin_MG(eq_amg, AMGf_numeric);
     right = POPs;
     left  = TOPs;
+    flags_and = SvFLAGS(left) & SvFLAGS(right);
+    flags_or  = SvFLAGS(left) | SvFLAGS(right);
+
     SETs(boolSV(
-	(SvIOK_notUV(left) && SvIOK_notUV(right))
-	? (SvIVX(left) == SvIVX(right))
-	: ( do_ncmp(left, right) == 0)
+        ( (flags_and & SVf_IOK) && ((flags_or & SVf_IVisUV) ==0 ) )
+        ?    (SvIVX(left) == SvIVX(right))
+        : (flags_and & SVf_NOK)
+        ?    (SvNVX(left) == SvNVX(right))
+        : ( do_ncmp(left, right) == 0)
     ));
     RETURN;
 }
@@ -2072,7 +2078,6 @@ S_aassign_copy_common(pTHX_ SV **firstlelem, SV **lastlelem,
 #endif
 )
 {
-    dVAR;
     SV **relem;
     SV **lelem;
     SSize_t lcount = lastlelem - firstlelem + 1;
@@ -2200,7 +2205,7 @@ S_aassign_copy_common(pTHX_ SV **firstlelem, SV **lastlelem,
 
 PP(pp_aassign)
 {
-    dVAR; dSP;
+    dSP;
     SV **lastlelem = PL_stack_sp;
     SV **lastrelem = PL_stack_base + POPMARK;
     SV **firstrelem = PL_stack_base + POPMARK + 1;
@@ -2738,8 +2743,8 @@ PP(pp_aassign)
 	    if (!SvIMMORTAL(lsv)) {
                 sv_set_undef(lsv);
                 SvSETMAGIC(lsv);
-                *relem++ = lsv;
             }
+            *relem++ = lsv;
 	    break;
         } /* switch */
     } /* while */
@@ -3176,7 +3181,7 @@ Perl_do_readline(pTHX)
 	    if (IoFLAGS(io) & IOf_ARGV) {
 		if (IoFLAGS(io) & IOf_START) {
 		    IoLINES(io) = 0;
-		    if (av_tindex(GvAVn(PL_last_in_gv)) < 0) {
+		    if (av_count(GvAVn(PL_last_in_gv)) == 0) {
 			IoFLAGS(io) &= ~IOf_START;
 			do_open6(PL_last_in_gv, "-", 1, NULL, NULL, 0);
 			SvTAINTED_off(GvSVn(PL_last_in_gv)); /* previous tainting irrelevant */
@@ -3635,7 +3640,7 @@ PP(pp_multideref)
                             IV len;
                             if (!defer)
                                 DIE(aTHX_ PL_no_aelem, elem);
-                            len = av_tindex(av);
+                            len = av_top_index(av);
                             /* Resolve a negative index that falls within
                              * the array.  Leave it negative it if falls
                              * outside the array.  */
@@ -4659,7 +4664,6 @@ PP(pp_grepwhile)
 void
 Perl_leave_adjust_stacks(pTHX_ SV **from_sp, SV **to_sp, U8 gimme, int pass)
 {
-    dVAR;
     dSP;
     SSize_t tmps_base; /* lowest index into tmps stack that needs freeing now */
     SSize_t nargs;
@@ -5388,7 +5392,7 @@ PP(pp_aelem)
 	    IV len;
 	    if (!defer)
 		DIE(aTHX_ PL_no_aelem, elem);
-	    len = av_tindex(av);
+	    len = av_top_index(av);
 	    /* Resolve a negative index that falls within the array.  Leave
 	       it negative it if falls outside the array.  */
 	    if (elem < 0 && len + elem >= 0)

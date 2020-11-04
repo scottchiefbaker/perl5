@@ -2062,14 +2062,20 @@ PP(pp_lt)
 {
     dSP;
     SV *left, *right;
+    U32 flags_and, flags_or;
 
     tryAMAGICbin_MG(lt_amg, AMGf_numeric);
     right = POPs;
     left  = TOPs;
+    flags_and = SvFLAGS(left) & SvFLAGS(right);
+    flags_or  = SvFLAGS(left) | SvFLAGS(right);
+
     SETs(boolSV(
-	(SvIOK_notUV(left) && SvIOK_notUV(right))
-	? (SvIVX(left) < SvIVX(right))
-	: (do_ncmp(left, right) == -1)
+        ( (flags_and & SVf_IOK) && ((flags_or & SVf_IVisUV) ==0 ) )
+        ?    (SvIVX(left) < SvIVX(right))
+        : (flags_and & SVf_NOK)
+        ?    (SvNVX(left) < SvNVX(right))
+        : (do_ncmp(left, right) == -1)
     ));
     RETURN;
 }
@@ -2078,14 +2084,20 @@ PP(pp_gt)
 {
     dSP;
     SV *left, *right;
+    U32 flags_and, flags_or;
 
     tryAMAGICbin_MG(gt_amg, AMGf_numeric);
     right = POPs;
     left  = TOPs;
+    flags_and = SvFLAGS(left) & SvFLAGS(right);
+    flags_or  = SvFLAGS(left) | SvFLAGS(right);
+
     SETs(boolSV(
-	(SvIOK_notUV(left) && SvIOK_notUV(right))
-	? (SvIVX(left) > SvIVX(right))
-	: (do_ncmp(left, right) == 1)
+        ( (flags_and & SVf_IOK) && ((flags_or & SVf_IVisUV) ==0 ) )
+        ?    (SvIVX(left) > SvIVX(right))
+        : (flags_and & SVf_NOK)
+        ?    (SvNVX(left) > SvNVX(right))
+        : (do_ncmp(left, right) == 1)
     ));
     RETURN;
 }
@@ -2094,14 +2106,20 @@ PP(pp_le)
 {
     dSP;
     SV *left, *right;
+    U32 flags_and, flags_or;
 
     tryAMAGICbin_MG(le_amg, AMGf_numeric);
     right = POPs;
     left  = TOPs;
+    flags_and = SvFLAGS(left) & SvFLAGS(right);
+    flags_or  = SvFLAGS(left) | SvFLAGS(right);
+
     SETs(boolSV(
-	(SvIOK_notUV(left) && SvIOK_notUV(right))
-	? (SvIVX(left) <= SvIVX(right))
-	: (do_ncmp(left, right) <= 0)
+        ( (flags_and & SVf_IOK) && ((flags_or & SVf_IVisUV) ==0 ) )
+        ?    (SvIVX(left) <= SvIVX(right))
+        : (flags_and & SVf_NOK)
+        ?    (SvNVX(left) <= SvNVX(right))
+        : (do_ncmp(left, right) <= 0)
     ));
     RETURN;
 }
@@ -2110,14 +2128,20 @@ PP(pp_ge)
 {
     dSP;
     SV *left, *right;
+    U32 flags_and, flags_or;
 
     tryAMAGICbin_MG(ge_amg, AMGf_numeric);
     right = POPs;
     left  = TOPs;
+    flags_and = SvFLAGS(left) & SvFLAGS(right);
+    flags_or  = SvFLAGS(left) | SvFLAGS(right);
+
     SETs(boolSV(
-	(SvIOK_notUV(left) && SvIOK_notUV(right))
-	? (SvIVX(left) >= SvIVX(right))
-	: ( (do_ncmp(left, right) & 2) == 0)
+        ( (flags_and & SVf_IOK) && ((flags_or & SVf_IVisUV) ==0 ) )
+        ?    (SvIVX(left) >= SvIVX(right))
+        : (flags_and & SVf_NOK)
+        ?    (SvNVX(left) >= SvNVX(right))
+        : ( (do_ncmp(left, right) & 2) == 0)
     ));
     RETURN;
 }
@@ -2126,14 +2150,20 @@ PP(pp_ne)
 {
     dSP;
     SV *left, *right;
+    U32 flags_and, flags_or;
 
     tryAMAGICbin_MG(ne_amg, AMGf_numeric);
     right = POPs;
     left  = TOPs;
+    flags_and = SvFLAGS(left) & SvFLAGS(right);
+    flags_or  = SvFLAGS(left) | SvFLAGS(right);
+
     SETs(boolSV(
-	(SvIOK_notUV(left) && SvIOK_notUV(right))
-	? (SvIVX(left) != SvIVX(right))
-	: (do_ncmp(left, right) != 0)
+        ( (flags_and & SVf_IOK) && ((flags_or & SVf_IVisUV) ==0 ) )
+        ?    (SvIVX(left) != SvIVX(right))
+        : (flags_and & SVf_NOK)
+        ?    (SvNVX(left) != SvNVX(right))
+        : (do_ncmp(left, right) != 0)
     ));
     RETURN;
 }
@@ -3654,11 +3684,8 @@ PP(pp_crypt)
 #    endif /* HAS_CRYPT_R */
 #  endif /* USE_ITHREADS */
 
-#  ifdef FCRYPT
-    sv_setpv(TARG, fcrypt(tmps, SvPV_nolen_const(right)));
-#  else
     sv_setpv(TARG, PerlProc_crypt(tmps, SvPV_nolen_const(right)));
-#  endif
+
     SvUTF8_off(TARG);
     SETTARG;
     RETURN;
@@ -4024,7 +4051,6 @@ PP(pp_ucfirst)
 
 PP(pp_uc)
 {
-    dVAR;
     dSP;
     SV *source = TOPs;
     STRLEN len;
@@ -4962,7 +4988,7 @@ PP(pp_aeach)
     IV *iterp = Perl_av_iter_p(aTHX_ array);
     const IV current = (*iterp)++;
 
-    if (current > av_tindex(array)) {
+    if (current > av_top_index(array)) {
 	*iterp = 0;
 	if (gimme == G_SCALAR)
 	    RETPUSHUNDEF;
@@ -4990,7 +5016,7 @@ PP(pp_akeys)
 
     if (gimme == G_SCALAR) {
 	dTARGET;
-	PUSHi(av_tindex(array) + 1);
+	PUSHi(av_count(array));
     }
     else if (gimme == G_ARRAY) {
       if (UNLIKELY(PL_op->op_private & OPpMAYBE_LVSUB)) {
@@ -5001,7 +5027,7 @@ PP(pp_akeys)
                       "Can't modify keys on array in list assignment");
       }
       {
-        IV n = Perl_av_len(aTHX_ array);
+        IV n = av_top_index(array);
         IV i;
 
         EXTEND(SP, n + 1);
@@ -5833,7 +5859,7 @@ PP(pp_reverse)
 		const MAGIC *mg;
 		bool can_preserve = SvCANEXISTDELETE(av);
 
-		for (i = 0, j = av_tindex(av); i < j; ++i, --j) {
+		for (i = 0, j = av_top_index(av); i < j; ++i, --j) {
 		    SV *begin, *end;
 
 		    if (can_preserve) {
@@ -6019,11 +6045,15 @@ PP(pp_split)
 	}
 	else {
 	    if (!AvREAL(ary)) {
-		I32 i;
 		AvREAL_on(ary);
 		AvREIFY_off(ary);
-		for (i = AvFILLp(ary); i >= 0; i--)
-		    AvARRAY(ary)[i] = &PL_sv_undef; /* don't free mere refs */
+
+		/* Note: the above av_clear(ary) above should */
+		/* have set AvFILLp(ary) = -1, so this Zero() */
+		/* may well be superfluous.                   */
+
+		/* don't free mere refs */
+		Zero(AvARRAY(ary), AvFILLp(ary) + 1, SV*);
 	    }
 	    /* temporarily switch stacks */
 	    SAVESWITCHSTACK(PL_curstack, ary);
@@ -6148,62 +6178,52 @@ PP(pp_split)
 	}
     }
     else if (RX_EXTFLAGS(rx) & RXf_NULL && !(s >= strend)) {
-        /*
-          Pre-extend the stack, either the number of bytes or
-          characters in the string or a limited amount, triggered by:
+        /* This case boils down to deciding which is the smaller of:
+         * limit - effectively a number of characters
+         * slen - which already contains the number of characters in s
+         *
+         * The resulting number is the number of iters (for gimme_scalar)
+         * or the number of SVs to create (!gimme_scalar). */
 
-          my ($x, $y) = split //, $str;
-            or
-          split //, $str, $i;
-        */
-	if (!gimme_scalar) {
-	    const IV items = limit - 1;
-            /* setting it to -1 will trigger a panic in EXTEND() */
-            const SSize_t sslen = slen > SSize_t_MAX ?  -1 : (SSize_t)slen;
-	    if (items >=0 && items < sslen)
-		EXTEND(SP, items);
-	    else
-		EXTEND(SP, sslen);
-	}
-
-        if (do_utf8) {
-            while (--limit) {
-                /* keep track of how many bytes we skip over */
-                m = s;
-                s += UTF8SKIP(s);
-		if (gimme_scalar) {
-		    iters++;
-		    if (s-m == 0)
-			trailing_empty++;
-		    else
-			trailing_empty = 0;
-		} else {
-		    dstr = newSVpvn_flags(m, s-m, SVf_UTF8 | make_mortal);
-
-		    PUSHs(dstr);
-		}
-
-                if (s >= strend)
-                    break;
+        /* setting it to -1 will trigger a panic in EXTEND() */
+        const SSize_t sslen = slen > SSize_t_MAX ?  -1 : (SSize_t)slen;
+        const IV items = limit - 1;
+        if (sslen < items || items < 0) {
+            iters = slen -1;
+            limit = slen + 1;
+            /* Note: The same result is returned if the following block
+             * is removed, because of the "keep field after final delim?"
+             * adjustment, but having the following makes the "correct"
+             * behaviour more apparent. */
+            if (gimme_scalar) {
+                s = strend;
+                iters++;
             }
         } else {
-            while (--limit) {
-	        if (gimme_scalar) {
-		    iters++;
-		} else {
-		    dstr = newSVpvn(s, 1);
-
-
-		    if (make_mortal)
-			sv_2mortal(dstr);
-
-		    PUSHs(dstr);
-		}
-
-                s++;
-
-                if (s >= strend)
-                    break;
+            iters = items;
+        }
+        if (!gimme_scalar) {
+            /*
+              Pre-extend the stack, either the number of bytes or
+              characters in the string or a limited amount, triggered by:
+              my ($x, $y) = split //, $str;
+                or
+              split //, $str, $i;
+            */
+            EXTEND(SP, limit);
+            if (do_utf8) {
+                while (--limit) {
+                    m = s;
+                    s += UTF8SKIP(s);
+                    dstr = newSVpvn_flags(m, s-m, SVf_UTF8 | make_mortal);
+                    PUSHs(dstr);
+                }
+            } else {
+                while (--limit) {
+                    dstr = newSVpvn_flags(s, 1, make_mortal);
+                    PUSHs(dstr);
+                    s++;
+                }
             }
         }
     }
@@ -6638,7 +6658,7 @@ PP(pp_coreargs)
 
 PP(pp_avhvswitch)
 {
-    dVAR; dSP;
+    dSP;
     return PL_ppaddr[
 		(SvTYPE(TOPs) == SVt_PVAV ? OP_AEACH : OP_EACH)
 		    + (PL_op->op_private & OPpAVHVSWITCH_MASK)

@@ -75,6 +75,7 @@
 #define SAVEt_GVSLOT		51
 #define SAVEt_AELEM		52
 #define SAVEt_DELETE		53
+#define SAVEt_HINTS_HH		54
 
 
 #define SAVEf_SETMAGIC		1
@@ -151,7 +152,7 @@
 
 
 /*
-=head1 Callback Functions
+=for apidoc_section Callback Functions
 
 =for apidoc Amns||SAVETMPS
 Opening bracket for temporaries on a callback.  See C<L</FREETMPS>> and

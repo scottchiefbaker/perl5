@@ -442,9 +442,6 @@ S_do_trans_invmap(pTHX_ SV * const sv, AV * const invmap)
      * assume cannot */
     if (! out_is_utf8 && (PL_op->op_private & OPpTRANS_CAN_FORCE_UTF8)) {
         inplace = FALSE;
-        if (max_expansion < 2) {
-            max_expansion = 2;
-        }
     }
 
     s = (U8*)SvPV_nomg(sv, len);
@@ -731,7 +728,6 @@ Perl_do_sprintf(pTHX_ SV *sv, SSize_t len, SV **sarg)
 	SvTAINTED_on(sv);
 }
 
-/* currently converts input to bytes if possible, but doesn't sweat failure */
 UV
 Perl_do_vecget(pTHX_ SV *sv, STRLEN offset, int size)
 {
@@ -757,7 +753,8 @@ Perl_do_vecget(pTHX_ SV *sv, STRLEN offset, int size)
             s = (unsigned char *) SvPV_flags(sv, srclen, svpv_flags);
         }
         else {
-	        Perl_croak(aTHX_ "Use of strings with code points over 0xFF as arguments to vec is forbidden");
+            Perl_croak(aTHX_ "Use of strings with code points over 0xFF"
+                             " as arguments to vec is forbidden");
         }
     }
 
@@ -857,7 +854,7 @@ Perl_do_vecget(pTHX_ SV *sv, STRLEN offset, int size)
 	}
     }
     else if (size < 8)
-	retnum = (s[uoffset] >> bitoffs) & ((1 << size) - 1);
+	retnum = (s[uoffset] >> bitoffs) & nBIT_MASK(size);
     else {
 	if (size == 8)
 	    retnum = s[uoffset];
@@ -960,7 +957,7 @@ Perl_do_vecset(pTHX_ SV *sv)
     }
 
     if (size < 8) {
-	mask = (1 << size) - 1;
+	mask = nBIT_MASK(size);
 	lval &= mask;
 	s[offset] &= ~(mask << bitoffs);
 	s[offset] |= lval << bitoffs;
@@ -1090,7 +1087,6 @@ Perl_do_vop(pTHX_ I32 optype, SV *sv, SV *left, SV *right)
     lsave = lc;
     rsave = rc;
 
-    SvCUR_set(sv, len);
     (void)SvPOK_only(sv);
     if (SvOK(sv) || SvTYPE(sv) > SVt_PVMG) {
 	dc = SvPV_force_nomg_nolen(sv);
@@ -1106,6 +1102,7 @@ Perl_do_vop(pTHX_ I32 optype, SV *sv, SV *left, SV *right)
 	sv_usepvn_flags(sv, dc, needlen, SV_HAS_TRAILING_NUL);
 	dc = SvPVX(sv);		/* sv_usepvn() calls Renew() */
     }
+    SvCUR_set(sv, len);
 
     if (len >= sizeof(long)*4 &&
 	!(PTR2nat(dc) % sizeof(long)) &&

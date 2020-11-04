@@ -78,6 +78,13 @@ L<https://help.github.com/en/articles/working-with-forks>.
 
   % git remote add fork git@github.com:MyUser/perl5.git
 
+For more information, see L<"Connecting to GitHub with SSH"|https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/connecting-to-github-with-ssh>.
+
+If you'd rather use an HTTPS URL for your C<git push> see L<"Cloning with
+HTTPS URLs"|https://docs.github.com/en/free-pro-team@latest/github/using-git/which-remote-url-should-i-use#cloning-with-https-urls>.
+
+  % git remote add fork https://github.com/MyUser/perl5.git
+
 Then, push your new branch to your fork.
 
   % git push -u fork mychange
@@ -1080,7 +1087,7 @@ C<make>, however, failed with output (excerpted) like this:
       mg.o reentr.o mro.o hv.o av.o run.o pp_hot.o sv.o \
       pp.o scope.o pp_ctl.o pp_sys.o doop.o doio.o regexec.o \
       utf8.o taint.o deb.o universal.o globals.o perlio.o \
-      perlapi.o numeric.o mathoms.o locale.o pp_pack.o pp_sort.o  \
+      numeric.o mathoms.o locale.o pp_pack.o pp_sort.o  \
       miniperlmain.o opmini.o perlmini.o
     pp.o: In function `Perl_pp_pow':
     pp.c:(.text+0x2db9): undefined reference to `pow'

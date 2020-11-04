@@ -16,7 +16,7 @@
 #
 # This script is normally invoked from regen.pl.
 
-$VERSION = '1.47';
+$VERSION = '1.48';
 
 BEGIN {
     require './regen/regen_lib.pl';
@@ -205,15 +205,15 @@ sub walk
 
 sub mkRange
 {
-    my @a = @_ ;
-    my @out = @a ;
+    my @in = @_ ;
+    my @out = @in ;
 
-    for my $i (1 .. @a - 1) {
+    for my $i (1 .. @in - 1) {
       	$out[$i] = ".."
-          if $a[$i] == $a[$i - 1] + 1
-             && ($i >= @a  - 1 || $a[$i] + 1 == $a[$i + 1] );
+          if $in[$i] == $in[$i - 1] + 1
+             && ($i >= @in  - 1 || $in[$i] + 1 == $in[$i + 1] );
     }
-    $out[-1] = $a[-1] if $out[-1] eq "..";
+    $out[-1] = $in[-1] if $out[-1] eq "..";
 
     my $out = join(",",@out);
 
@@ -267,11 +267,11 @@ sub warningsTree
 
 sub mkHexOct
 {
-    my ($f, $max, @a) = @_ ;
+    my ($f, $max, @bits) = @_ ;
     my $mask = "\x00" x $max ;
     my $string = "" ;
 
-    foreach (@a) {
+    foreach (@bits) {
 	vec($mask, $_, 1) = 1 ;
     }
 
@@ -288,14 +288,14 @@ sub mkHexOct
 
 sub mkHex
 {
-    my($max, @a) = @_;
-    return mkHexOct("x", $max, @a);
+    my($max, @bits) = @_;
+    return mkHexOct("x", $max, @bits);
 }
 
 sub mkOct
 {
-    my($max, @a) = @_;
-    return mkHexOct("o", $max, @a);
+    my($max, @bits) = @_;
+    return mkHexOct("o", $max, @bits);
 }
 
 ###########################################################################
@@ -317,9 +317,9 @@ my ($index, $warn_size);
 
   print $warn <<'EOM';
 
-#define Off(x)			((x) / 8)
-#define Bit(x)			(1 << ((x) % 8))
-#define IsSet(a, x)		((a)[Off(x)] & Bit(x))
+#define Perl_Warn_Off_(x)           ((x) / 8)
+#define Perl_Warn_Bit_(x)           (1 << ((x) % 8))
+#define PerlWarnIsSet_(a, x)        ((a)[Perl_Warn_Off_(x)] & Perl_Warn_Bit_(x))
 
 
 #define G_WARN_OFF		0 	/* $^W == 0 */
@@ -371,10 +371,6 @@ EOM
       push @names, $name;
       $last_ver = $version ;
   }
-  print $warn "\n\n/*\n" ;
-
-  print $warn map { "=for apidoc Amnh||$_\n" } @names;
-  print $warn "\n=cut\n*/\n\n" ;
 
   print $warn tab(6, '#define WARNsize'),	" $warn_size\n" ;
   print $warn tab(6, '#define WARN_ALLstring'), ' "', ('\125' x $warn_size) , "\"\n" ;
@@ -387,8 +383,8 @@ EOM
 #define isLEXWARN_off \
 	cBOOL(!PL_curcop || PL_curcop->cop_warnings == pWARN_STD)
 #define isWARN_ONCE	(PL_dowarn & (G_WARN_ON|G_WARN_ONCE))
-#define isWARN_on(c,x)	(IsSet((U8 *)(c + 1), 2*(x)))
-#define isWARNf_on(c,x)	(IsSet((U8 *)(c + 1), 2*(x)+1))
+#define isWARN_on(c,x)	(PerlWarnIsSet_((U8 *)(c + 1), 2*(x)))
+#define isWARNf_on(c,x)	(PerlWarnIsSet_((U8 *)(c + 1), 2*(x)+1))
 
 #define DUP_WARNINGS(p) Perl_dup_warnings(aTHX_ p)
 
@@ -409,54 +405,35 @@ perl program becomes C<WARN_VOID> when used in XS code and passed to one of
 the calls below.
 
 =for apidoc Am|bool|ckWARN|U32 w
+=for apidoc_item ||ckWARN2|U32 w1|U32 w2
+=for apidoc_item ||ckWARN3|U32 w1|U32 w2|U32 w3
+=for apidoc_item ||ckWARN4|U32 w1|U32 w2|U32 w3|U32 w4
+These return a boolean as to whether or not warnings are enabled for any of
+the warning category(ies) parameters:  C<w>, C<w1>, ....
 
-Returns a boolean as to whether or not warnings are enabled for the warning
-category C<w>.  If the category is by default enabled even if not within the
-scope of S<C<use warnings>>, instead use the L</ckWARN_d> macro.
+Should any of the categories by default be enabled even if not within the
+scope of S<C<use warnings>>, instead use the C<L</ckWARN_d>> macros.
+
+The categories must be completely independent, one may not be subclassed from
+the other.
 
 =for apidoc Am|bool|ckWARN_d|U32 w
+=for apidoc_item ||ckWARN2_d|U32 w1|U32 w2
+=for apidoc_item ||ckWARN3_d|U32 w1|U32 w2|U32 w3
+=for apidoc_item ||ckWARN4_d|U32 w1|U32 w2|U32 w3|U32 w4
 
-Like C<L</ckWARN>>, but for use if and only if the warning category is by
+Like C<L</ckWARN>>, but for use if and only if the warning category(ies) is by
 default enabled even if not within the scope of S<C<use warnings>>.
 
-=for apidoc Am|bool|ckWARN2|U32 w1|U32 w2
+=for apidoc Am|U32|packWARN|U32 w1
+=for apidoc_item ||packWARN2|U32 w1|U32 w2
+=for apidoc_item ||packWARN3|U32 w1|U32 w2|U32 w3
+=for apidoc_item ||packWARN4|U32 w1|U32 w2|U32 w3|U32 w4
 
-Like C<L</ckWARN>>, but takes two warnings categories as input, and returns
-TRUE if either is enabled.  If either category is by default enabled even if
-not within the scope of S<C<use warnings>>, instead use the L</ckWARN2_d>
-macro.  The categories must be completely independent, one may not be
-subclassed from the other.
-
-=for apidoc Am|bool|ckWARN2_d|U32 w1|U32 w2
-
-Like C<L</ckWARN2>>, but for use if and only if either warning category is by
-default enabled even if not within the scope of S<C<use warnings>>.
-
-=for apidoc Am|bool|ckWARN3|U32 w1|U32 w2|U32 w3
-
-Like C<L</ckWARN2>>, but takes three warnings categories as input, and returns
-TRUE if any is enabled.  If any of the categories is by default enabled even
-if not within the scope of S<C<use warnings>>, instead use the L</ckWARN3_d>
-macro.  The categories must be completely independent, one may not be
-subclassed from any other.
-
-=for apidoc Am|bool|ckWARN3_d|U32 w1|U32 w2|U32 w3
-
-Like C<L</ckWARN3>>, but for use if and only if any of the warning categories
-is by default enabled even if not within the scope of S<C<use warnings>>.
-
-=for apidoc Am|bool|ckWARN4|U32 w1|U32 w2|U32 w3|U32 w4
-
-Like C<L</ckWARN3>>, but takes four warnings categories as input, and returns
-TRUE if any is enabled.  If any of the categories is by default enabled even
-if not within the scope of S<C<use warnings>>, instead use the L</ckWARN4_d>
-macro.  The categories must be completely independent, one may not be
-subclassed from any other.
-
-=for apidoc Am|bool|ckWARN4_d|U32 w1|U32 w2|U32 w3|U32 w4
-
-Like C<L</ckWARN4>>, but for use if and only if any of the warning categories
-is by default enabled even if not within the scope of S<C<use warnings>>.
+These macros are used to pack warning categories into a single U32 to pass to
+macros and functions that take a warning category parameter.  The number of
+categories to pack is given by the name, with a corresponding number of
+category parameters passed.
 
 =cut
 
@@ -503,8 +480,12 @@ is by default enabled even if not within the scope of S<C<use warnings>>.
 	      (unpackWARN4(x) &&                                        \
 		isWARNf_on(PL_curcop->cop_warnings, unpackWARN4(x)))))))))
 
-/* end of file warnings.h */
 EOM
+
+  print $warn "\n\n/*\n" ;
+  print $warn map { "=for apidoc Amnh||$_\n" } @names;
+  print $warn "\n=cut\n*/\n\n" ;
+  print $warn "/* end of file warnings.h */\n";
 
   read_only_bottom_close_and_rename($warn);
 }
@@ -566,7 +547,7 @@ print $pm ");\n\n" ;
 print $pm "# These are used by various things, including our own tests\n";
 print $pm tab(6, 'our $NONE'), '=  "', ('\0' x $warn_size) , "\";\n" ;
 print $pm tab(6, 'our $DEFAULT'), '=  "', mkHex($warn_size, map $_ * 2, @def),
-			   '", # [', mkRange(sort { $a <=> $b } @def), "]\n" ;
+			   '"; # [', mkRange(sort { $a <=> $b } @def), "]\n" ;
 print $pm tab(6, 'our $LAST_BIT'), '=  ' . "$index ;\n" ;
 print $pm tab(6, 'our $BYTES'),    '=  ' . "$warn_size ;\n" ;
 while (<DATA>) {
@@ -612,10 +593,10 @@ sub _expand_bits {
 	} elsif ($len > $want_len) {
 	    substr $bits, $want_len, $len-$want_len, "";
 	} else {
-	    my $a = vec($bits, $Offsets{all} >> 1, 2);
-	    $a |= $a << 2;
-	    $a |= $a << 4;
-	    $bits .= chr($a) x ($want_len - $len);
+	    my $x = vec($bits, $Offsets{all} >> 1, 2);
+	    $x |= $x << 2;
+	    $x |= $x << 4;
+	    $bits .= chr($x) x ($want_len - $len);
 	}
     }
     return $bits;
@@ -943,17 +924,17 @@ Similarly all warnings are disabled in a block by either of these:
 For example, consider the code below:
 
     use warnings;
-    my @a;
+    my @x;
     {
         no warnings;
-	my $b = @a[0];
+	my $y = @x[0];
     }
-    my $c = @a[0];
+    my $z = @x[0];
 
 The code in the enclosing block has warnings enabled, but the inner
 block has them disabled.  In this case that means the assignment to the
-scalar C<$c> will trip the C<"Scalar value @a[0] better written as $a[0]">
-warning, but the assignment to the scalar C<$b> will not.
+scalar C<$z> will trip the C<"Scalar value @x[0] better written as $x[0]">
+warning, but the assignment to the scalar C<$y> will not.
 
 =head2 Default Warnings and Optional Warnings
 
@@ -965,18 +946,18 @@ would get a warning whether you wanted it or not.
 For example, the code below would always produce an C<"isn't numeric">
 warning about the "2:".
 
-    my $a = "2:" + 3;
+    my $x = "2:" + 3;
 
 With the introduction of lexical warnings, mandatory warnings now become
 I<default> warnings.  The difference is that although the previously
 mandatory warnings are still enabled by default, they can then be
 subsequently enabled or disabled with the lexical warning pragma.  For
 example, in the code below, an C<"isn't numeric"> warning will only
-be reported for the C<$a> variable.
+be reported for the C<$x> variable.
 
-    my $a = "2:" + 3;
+    my $x = "2:" + 3;
     no warnings;
-    my $b = "2:" + 3;
+    my $y = "2:" + 3;
 
 Note that neither the B<-w> flag or the C<$^W> can be used to
 disable/enable default warnings.  They are still mandatory in this case.
@@ -996,20 +977,20 @@ a block of code.  You might expect this to be enough to do the trick:
 
      {
          local ($^W) = 0;
-	 my $a =+ 2;
-	 my $b; chop $b;
+	 my $x =+ 2;
+	 my $y; chop $y;
      }
 
 When this code is run with the B<-w> flag, a warning will be produced
-for the C<$a> line:  C<"Reversed += operator">.
+for the C<$x> line:  C<"Reversed += operator">.
 
 The problem is that Perl has both compile-time and run-time warnings.  To
 disable compile-time warnings you need to rewrite the code like this:
 
      {
          BEGIN { $^W = 0 }
-	 my $a =+ 2;
-	 my $b; chop $b;
+	 my $x =+ 2;
+	 my $y; chop $y;
      }
 
 And note that unlike the first example, this will permanently set C<$^W>
@@ -1024,7 +1005,7 @@ the first will not.
 
     sub doit
     {
-        my $b; chop $b;
+        my $y; chop $y;
     }
 
     doit();
@@ -1050,7 +1031,7 @@ warnings are (or aren't) produced:
 X<-w>
 
 This is  the existing flag.  If the lexical warnings pragma is B<not>
-used in any of you code, or any of the modules that you use, this flag
+used in any of your code, or any of the modules that you use, this flag
 will enable warnings everywhere.  See L</Backward Compatibility> for
 details of how this flag interacts with lexical warnings.
 
@@ -1392,12 +1373,12 @@ C<Derived>.
     use Original;
     use Derived;
     use warnings 'Derived';
-    my $a = Original->new();
-    $a->doit(1);
-    my $b = Derived->new();
-    $a->doit(1);
+    my $x = Original->new();
+    $x->doit(1);
+    my $y = Derived->new();
+    $x->doit(1);
 
-When this code is run only the C<Derived> object, C<$b>, will generate
+When this code is run only the C<Derived> object, C<$y>, will generate
 a warning.
 
     Odd numbers are unsafe at main.pl line 7

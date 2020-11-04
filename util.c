@@ -533,64 +533,249 @@ Free_t   Perl_mfree (Malloc_t where)
 
 #endif
 
-/* copy a string up to some (non-backslashed) delimiter, if any.
- * With allow_escape, converts \<delimiter> to <delimiter>, while leaves
- * \<non-delimiter> as-is.
- * Returns the position in the src string of the closing delimiter, if
- * any, or returns fromend otherwise.
- * This is the internal implementation for Perl_delimcpy and
- * Perl_delimcpy_no_escape.
- */
+/* This is the value stored in *retlen in the two delimcpy routines below when
+ * there wasn't enough room in the destination to store everything it was asked
+ * to.  The value is deliberately very large so that hopefully if code uses it
+ * unquestioninly to access memory, it will likely segfault.  And it is small
+ * enough that if the caller does some arithmetic on it before accessing, it
+ * won't overflow into a small legal number. */
+#define DELIMCPY_OUT_OF_BOUNDS_RET  I32_MAX
 
-static char *
-S_delimcpy_intern(char *to, const char *toend, const char *from,
-	   const char *fromend, int delim, I32 *retlen,
-	   const bool allow_escape)
-{
-    I32 tolen;
+/*
+=for apidoc_section String Handling
+=for apidoc delimcpy_no_escape
 
-    PERL_ARGS_ASSERT_DELIMCPY;
+Copy a source buffer to a destination buffer, stopping at (but not including)
+the first occurrence in the source of the delimiter byte, C<delim>.  The source
+is the bytes between S<C<from> and C<from_end> - 1>.  Similarly, the dest is
+C<to> up to C<to_end>.
 
-    for (tolen = 0; from < fromend; from++, tolen++) {
-	if (allow_escape && *from == '\\' && from + 1 < fromend) {
-	    if (from[1] != delim) {
-		if (to < toend)
-		    *to++ = *from;
-		tolen++;
-	    }
-	    from++;
-	}
-	else if (*from == delim)
-	    break;
-	if (to < toend)
-	    *to++ = *from;
-    }
-    if (to < toend)
-	*to = '\0';
-    *retlen = tolen;
-    return (char *)from;
-}
+The number of bytes copied is written to C<*retlen>.
 
+Returns the position of C<delim> in the C<from> buffer, but if there is no
+such occurrence before C<from_end>, then C<from_end> is returned, and the entire
+buffer S<C<from> .. C<from_end> - 1> is copied.
+
+If there is room in the destination available after the copy, an extra
+terminating safety C<NUL> byte is appended (not included in the returned
+length).
+
+The error case is if the destination buffer is not large enough to accommodate
+everything that should be copied.  In this situation, a value larger than
+S<C<to_end> - C<to>> is written to C<*retlen>, and as much of the source as
+fits will be written to the destination.  Not having room for the safety C<NUL>
+is not considered an error.
+
+=cut
+*/
 char *
-Perl_delimcpy(char *to, const char *toend, const char *from, const char *fromend, int delim, I32 *retlen)
+Perl_delimcpy_no_escape(char *to, const char *to_end,
+                        const char *from, const char *from_end,
+                        const int delim, I32 *retlen)
 {
-    PERL_ARGS_ASSERT_DELIMCPY;
+    const char * delim_pos;
+    Ptrdiff_t from_len = from_end - from;
+    Ptrdiff_t to_len = to_end - to;
+    SSize_t copy_len;
 
-    return S_delimcpy_intern(to, toend, from, fromend, delim, retlen, 1);
-}
-
-char *
-Perl_delimcpy_no_escape(char *to, const char *toend, const char *from,
-			const char *fromend, int delim, I32 *retlen)
-{
     PERL_ARGS_ASSERT_DELIMCPY_NO_ESCAPE;
 
-    return S_delimcpy_intern(to, toend, from, fromend, delim, retlen, 0);
+    assert(from_len >= 0);
+    assert(to_len >= 0);
+
+    /* Look for the first delimiter in the source */
+    delim_pos = (const char *) memchr(from, delim, from_len);
+
+    /* Copy up to where the delimiter was found, or the entire buffer if not
+     * found */
+    copy_len = (delim_pos) ? delim_pos - from : from_len;
+
+    /* If not enough room, copy as much as can fit, and set error return */
+    if (copy_len > to_len) {
+        Copy(from, to, to_len, char);
+        *retlen = DELIMCPY_OUT_OF_BOUNDS_RET;
+    }
+    else {
+        Copy(from, to, copy_len, char);
+
+        /* If there is extra space available, add a trailing NUL */
+        if (copy_len < to_len) {
+            to[copy_len] = '\0';
+        }
+
+        *retlen = copy_len;
+    }
+
+    return (char *) from + copy_len;
 }
 
 /*
-=head1 Miscellaneous Functions
+=for apidoc delimcpy
 
+Copy a source buffer to a destination buffer, stopping at (but not including)
+the first occurrence in the source of an unescaped (defined below) delimiter
+byte, C<delim>.  The source is the bytes between S<C<from> and C<from_end> -
+1>.  Similarly, the dest is C<to> up to C<to_end>.
+
+The number of bytes copied is written to C<*retlen>.
+
+Returns the position of the first uncopied C<delim> in the C<from> buffer, but
+if there is no such occurrence before C<from_end>, then C<from_end> is returned,
+and the entire buffer S<C<from> .. C<from_end> - 1> is copied.
+
+If there is room in the destination available after the copy, an extra
+terminating safety C<NUL> byte is appended (not included in the returned
+length).
+
+The error case is if the destination buffer is not large enough to accommodate
+everything that should be copied.  In this situation, a value larger than
+S<C<to_end> - C<to>> is written to C<*retlen>, and as much of the source as
+fits will be written to the destination.  Not having room for the safety C<NUL>
+is not considered an error.
+
+In the following examples, let C<x> be the delimiter, and C<0> represent a C<NUL>
+byte (B<NOT> the digit C<0>).  Then we would have
+
+  Source     Destination
+ abcxdef        abc0
+
+provided the destination buffer is at least 4 bytes long.
+
+An escaped delimiter is one which is immediately preceded by a single
+backslash.  Escaped delimiters are copied, and the copy continues past the
+delimiter; the backslash is not copied:
+
+  Source       Destination
+ abc\xdef       abcxdef0
+
+(provided the destination buffer is at least 8 bytes long).
+
+It's actually somewhat more complicated than that. A sequence of any odd number
+of backslashes escapes the following delimiter, and the copy continues with
+exactly one of the backslashes stripped.
+
+     Source         Destination
+     abc\xdef          abcxdef0
+   abc\\\xdef        abc\\xdef0
+ abc\\\\\xdef      abc\\\\xdef0
+
+(as always, if the destination is large enough)
+
+An even number of preceding backslashes does not escape the delimiter, so that
+the copy stops just before it, and includes all the backslashes (no stripping;
+zero is considered even):
+
+      Source         Destination
+      abcxdef          abc0
+    abc\\xdef          abc\\0
+  abc\\\\xdef          abc\\\\0
+
+=cut
+*/
+
+char *
+Perl_delimcpy(char *to, const char *to_end,
+              const char *from, const char *from_end,
+              const int delim, I32 *retlen)
+{
+    const char * const orig_to = to;
+    Ptrdiff_t copy_len = 0;
+    bool stopped_early = FALSE;     /* Ran out of room to copy to */
+
+    PERL_ARGS_ASSERT_DELIMCPY;
+    assert(from_end >= from);
+    assert(to_end >= to);
+
+    /* Don't use the loop for the trivial case of the first character being the
+     * delimiter; otherwise would have to worry inside the loop about backing
+     * up before the start of 'from' */
+    if (LIKELY(from_end > from && *from != delim)) {
+        while ((copy_len = from_end - from) > 0) {
+            const char * backslash_pos;
+            const char * delim_pos;
+
+            /* Look for the next delimiter in the remaining portion of the
+             * source. A loop invariant is that we already know that the copy
+             * should include *from; this comes from the conditional before the
+             * loop, and how we set things up at the end of each iteration */
+            delim_pos = (const char *) memchr(from + 1, delim, copy_len - 1);
+
+            /* If didn't find it, done looking; set up so copies all of the
+             * source */
+            if (! delim_pos) {
+                copy_len = from_end - from;
+                break;
+            }
+
+            /* Look for a backslash immediately before the delimiter */
+            backslash_pos = delim_pos - 1;
+
+            /* If the delimiter is not escaped, this ends the copy */
+            if (*backslash_pos != '\\') {
+                copy_len = delim_pos - from;
+                break;
+            }
+
+            /* Here there is a backslash just before the delimiter, but it
+             * could be the final backslash in a sequence of them.  Backup to
+             * find the first one in it. */
+            do {
+                backslash_pos--;
+            }
+            while (backslash_pos >= from && *backslash_pos == '\\');
+
+            /* If the number of backslashes is even, they just escape one
+             * another, leaving the delimiter unescaped, and stopping the copy.
+             * */
+            if (! ((delim_pos - (backslash_pos + 1)) & 1)) {
+                copy_len = delim_pos - from;  /* even, copy up to delimiter */
+                break;
+            }
+
+            /* Here is odd, so the delimiter is escaped.  We will try to copy
+             * all but the final backslash in the sequence */
+            copy_len = delim_pos - 1 - from;
+
+            /* Do the copy, but not beyond the end of the destination */
+            if (copy_len >= to_end - to) {
+                Copy(from, to, to_end - to, char);
+                stopped_early = TRUE;
+                to = (char *) to_end;
+            }
+            else {
+                Copy(from, to, copy_len, char);
+                to += copy_len;
+            }
+
+            /* Set up so next iteration will include the delimiter */
+            from = delim_pos;
+        }
+    }
+
+    /* Here, have found the final segment to copy.  Copy that, but not beyond
+     * the size of the destination.  If not enough room, copy as much as can
+     * fit, and set error return */
+    if (stopped_early || copy_len > to_end - to) {
+        Copy(from, to, to_end - to, char);
+        *retlen = DELIMCPY_OUT_OF_BOUNDS_RET;
+    }
+    else {
+        Copy(from, to, copy_len, char);
+
+        to += copy_len;
+
+        /* If there is extra space available, add a trailing NUL */
+        if (to < to_end) {
+            *to = '\0';
+        }
+
+        *retlen = to - orig_to;
+    }
+
+    return (char *) from + copy_len;
+}
+
+/*
 =for apidoc ninstr
 
 Find the first (leftmost) occurrence of a sequence of bytes within another
@@ -626,23 +811,32 @@ Perl_ninstr(const char *big, const char *bigend, const char *little, const char 
     return ninstr(big, bigend, little, lend);
 #else
 
-    if (little >= lend)
-        return (char*)big;
-    {
-        const char first = *little;
-        bigend -= lend - little++;
-    OUTER:
+    if (little >= lend) {
+        return (char*) big;
+    }
+    else {
+        const U8 first = *little;
+        Size_t lsize;
+
+        /* No match can start closer to the end of the haystack than the length
+         * of the needle. */
+        bigend -= lend - little;
+        little++;       /* Look for 'first', then the remainder is in here */
+        lsize = lend - little;
+
         while (big <= bigend) {
-            if (*big++ == first) {
-                const char *s, *x;
-                for (x=big,s=little; s < lend; x++,s++) {
-                    if (*s != *x)
-                        goto OUTER;
-                }
-                return (char*)(big-1);
+            big = (char *) memchr((U8 *) big, first, bigend - big + 1);
+            if (big == NULL || big > bigend) {
+                return NULL;
             }
+
+            if (memEQ(big + 1, little, lsize)) {
+                return (char*) big;
+            }
+            big++;
         }
     }
+
     return NULL;
 
 #endif
@@ -650,8 +844,6 @@ Perl_ninstr(const char *big, const char *bigend, const char *little, const char 
 }
 
 /*
-=head1 Miscellaneous Functions
-
 =for apidoc rninstr
 
 Like C<L</ninstr>>, but instead finds the final (rightmost) occurrence of a
@@ -665,32 +857,95 @@ such occurrence.
 char *
 Perl_rninstr(const char *big, const char *bigend, const char *little, const char *lend)
 {
-    const char *bigbeg;
-    const I32 first = *little;
-    const char * const littleend = lend;
+    const Ptrdiff_t little_len = lend - little;
+    const Ptrdiff_t big_len = bigend - big;
 
     PERL_ARGS_ASSERT_RNINSTR;
 
-    if (little >= littleend)
+    /* A non-existent needle trivially matches the rightmost possible position
+     * in the haystack */
+    if (UNLIKELY(little_len <= 0)) {
 	return (char*)bigend;
-    bigbeg = big;
-    big = bigend - (littleend - little++);
-    while (big >= bigbeg) {
-	const char *s, *x;
-	if (*big-- != first)
-	    continue;
-	for (x=big+2,s=little; s < littleend; /**/ ) {
-	    if (*s != *x)
-		break;
-	    else {
-		x++;
-		s++;
-	    }
-	}
-	if (s >= littleend)
-	    return (char*)(big+1);
     }
-    return NULL;
+
+    /* If the needle is larger than the haystack, the needle can't possibly fit
+     * inside the haystack. */
+    if (UNLIKELY(little_len > big_len)) {
+        return NULL;
+    }
+
+    /* Special case length 1 needles.  It's trivial if we have memrchr();
+     * and otherwise we just do a per-byte search backwards.
+     *
+     * XXX When we don't have memrchr, we could use something like
+     * S_find_next_masked( or S_find_span_end() to do per-word searches */
+    if (little_len == 1) {
+        const char final = *little;
+
+#ifdef HAS_MEMRCHR
+
+        return (char *) memrchr(big, final, big_len);
+#else
+        const char * cur = bigend - 1;
+
+        do {
+            if (*cur == final) {
+                return (char *) cur;
+            }
+        } while (--cur >= big);
+
+        return NULL;
+#endif
+
+    }
+    else {  /* Below, the needle is longer than a single byte */
+
+        /* We search backwards in the haystack for the final character of the
+         * needle.  Each time one is found, we see if the characters just
+         * before it in the haystack match the rest of the needle. */
+        const char final = *(lend - 1);
+
+        /* What matches consists of 'little_len'-1 characters, then the final
+         * one */
+        const Size_t prefix_len = little_len - 1;
+
+        /* If the final character in the needle is any closer than this to the
+         * left edge, there wouldn't be enough room for all of it to fit in the
+         * haystack */
+        const char * const left_fence = big + prefix_len;
+
+        /* Start at the right edge */
+        char * cur = (char *) bigend;
+
+        /* memrchr() makes the search easy (and fast); otherwise, look
+         * backwards byte-by-byte. */
+        do {
+
+#ifdef HAS_MEMRCHR
+
+            cur = (char *) memrchr(left_fence, final, cur - left_fence);
+            if (cur == NULL) {
+                return NULL;
+            }
+#else
+            do {
+                cur--;
+                if (cur < left_fence) {
+                    return NULL;
+                }
+            }
+            while (*cur != final);
+#endif
+
+            /* Here, we know that *cur is 'final'; see if the preceding bytes
+             * of the needle also match the corresponding haystack bytes */
+            if memEQ(cur - prefix_len, little, prefix_len) {
+                return cur - prefix_len;
+            }
+        } while (cur > left_fence);
+
+        return NULL;
+    }
 }
 
 /* As a space optimization, we do not compile tables for strings of length
@@ -700,7 +955,6 @@ Perl_rninstr(const char *big, const char *bigend, const char *little, const char
    If FBMcf_TAIL, the table is created as if the string has a trailing \n. */
 
 /*
-=head1 Miscellaneous Functions
 
 =for apidoc fbm_compile
 
@@ -716,9 +970,7 @@ Perl_fbm_compile(pTHX_ SV *sv, U32 flags)
     const U8 *s;
     STRLEN i;
     STRLEN len;
-    U32 frequency = 256;
     MAGIC *mg;
-    PERL_DEB( STRLEN rarest = 0 );
 
     PERL_ARGS_ASSERT_FBM_COMPILE;
 
@@ -770,17 +1022,8 @@ Perl_fbm_compile(pTHX_ SV *sv, U32 flags)
 	}
     }
 
-    s = (const unsigned char*)(SvPVX_const(sv));	/* deeper magic */
-    for (i = 0; i < len; i++) {
-	if (PL_freq[s[i]] < frequency) {
-	    PERL_DEB( rarest = i );
-	    frequency = PL_freq[s[i]];
-	}
-    }
     BmUSEFUL(sv) = 100;			/* Initial value */
     ((XPVNV*)SvANY(sv))->xnv_u.xnv_bm_tail = cBOOL(flags & FBMcf_TAIL);
-    DEBUG_r(PerlIO_printf(Perl_debug_log, "rarest char %c at %" UVuf "\n",
-			  s[rarest], (UV)rarest));
 }
 
 
@@ -1058,8 +1301,7 @@ Perl_cntrl_to_mnemonic(const U8 c)
 /* copy a string to a safe spot */
 
 /*
-=head1 Memory Management
-
+=for apidoc_section String Handling
 =for apidoc savepv
 
 Perl's version of C<strdup()>.  Returns a pointer to a newly allocated
@@ -1067,7 +1309,7 @@ string which is a duplicate of C<pv>.  The size of the string is
 determined by C<strlen()>, which means it may not contain embedded C<NUL>
 characters and must have a trailing C<NUL>.  To prevent memory leaks, the
 memory allocated for the new string needs to be freed when no longer needed.
-This can be done with the L</C<Safefree>> function, or
+This can be done with the C<L</Safefree>> function, or
 L<C<SAVEFREEPV>|perlguts/SAVEFREEPV(p)>.
 
 On some platforms, Windows for example, all allocated memory owned by a thread
@@ -1266,11 +1508,12 @@ Perl_form_nocontext(const char* pat, ...)
 #endif /* PERL_IMPLICIT_CONTEXT */
 
 /*
-=head1 Miscellaneous Functions
+=for apidoc_section Display and Dump functions
 =for apidoc form
+=for apidoc_item form_nocontext
 
-Takes a sprintf-style format pattern and conventional
-(non-SV) arguments and returns the formatted string.
+These take a sprintf-style format pattern and conventional
+(non-SV) arguments and return the formatted string.
 
     (char *) Perl_form(pTHX_ const char* pat, ...)
 
@@ -1278,9 +1521,16 @@ can be used any place a string (char *) is required:
 
     char * s = Perl_form("%d.%d",major,minor);
 
-Uses a single private buffer so if you want to format several strings you
+They use a single private buffer so if you want to format several strings you
 must explicitly copy the earlier strings away (and free the copies when you
 are done).
+
+The two forms differ only in that C<form_nocontext> does not take a thread
+context (C<aTHX>) parameter, so is used in situations where the caller doesn't
+already have the thread context.
+
+=for apidoc vform
+Like C<L</form>> but but the arguments are an encapsulated argument list.
 
 =cut
 */
@@ -1308,15 +1558,20 @@ Perl_vform(pTHX_ const char *pat, va_list *args)
 
 /*
 =for apidoc mess
+=for apidoc_item mess_nocontext
 
-Take a sprintf-style format pattern and argument list.  These are used to
-generate a string message.  If the message does not end with a newline,
-then it will be extended with some indication of the current location
-in the code, as described for L</mess_sv>.
+These take a sprintf-style format pattern and argument list, which are used to
+generate a string message.  If the message does not end with a newline, then it
+will be extended with some indication of the current location in the code, as
+described for C<L</mess_sv>>.
 
 Normally, the resulting message is returned in a new mortal SV.
-During global destruction a single SV may be shared between uses of
+But during global destruction a single SV may be shared between uses of
 this function.
+
+The two forms differ only in that C<mess_nocontext> does not take a thread
+context (C<aTHX>) parameter, so is used in situations where the caller doesn't
+already have the thread context.
 
 =cut
 */
@@ -1541,7 +1796,7 @@ Perl_write_to_stderr(pTHX_ SV* msv)
 }
 
 /*
-=head1 Warning and Dieing
+=for apidoc_section Warning and Dieing
 */
 
 /* Common code used in dieing and warning */
@@ -1561,7 +1816,6 @@ S_with_queued_errors(pTHX_ SV *ex)
 STATIC bool
 S_invoke_exception_hook(pTHX_ SV *ex, bool warn)
 {
-    dVAR;
     HV *stash;
     GV *gv;
     CV *cv;
@@ -1605,10 +1859,15 @@ S_invoke_exception_hook(pTHX_ SV *ex, bool warn)
 
 /*
 =for apidoc die_sv
+=for apidoc_item die_nocontext
 
-Behaves the same as L</croak_sv>, except for the return type.
+These ehave the same as L</croak_sv>, except for the return type.
 It should be used only where the C<OP *> return type is required.
-The function never actually returns.
+The functions never actually return.
+
+The two forms differ only in that C<die_nocontext> does not take a thread
+context (C<aTHX>) parameter, so is used in situations where the caller doesn't
+already have the thread context.
 
 =cut
 */
@@ -1733,24 +1992,30 @@ Perl_vcroak(pTHX_ const char* pat, va_list *args)
 
 /*
 =for apidoc croak
+=for apidoc_item croak_nocontext
 
-This is an XS interface to Perl's C<die> function.
+These are XS interfaces to Perl's C<die> function.
 
-Take a sprintf-style format pattern and argument list.  These are used to
-generate a string message.  If the message does not end with a newline,
-then it will be extended with some indication of the current location
-in the code, as described for L</mess_sv>.
+They take a sprintf-style format pattern and argument list, which are used to
+generate a string message.  If the message does not end with a newline, then it
+will be extended with some indication of the current location in the code, as
+described for C<L</mess_sv>>.
 
 The error message will be used as an exception, by default
 returning control to the nearest enclosing C<eval>, but subject to
-modification by a C<$SIG{__DIE__}> handler.  In any case, the C<croak>
-function never returns normally.
+modification by a C<$SIG{__DIE__}> handler.  In any case, these croak
+functions never return normally.
 
 For historical reasons, if C<pat> is null then the contents of C<ERRSV>
 (C<$@>) will be used as an error message or object instead of building an
 error message from arguments.  If you want to throw a non-string object,
 or build an error message in an SV yourself, it is preferable to use
-the L</croak_sv> function, which does not involve clobbering C<ERRSV>.
+the C<L</croak_sv>> function, which does not involve clobbering C<ERRSV>.
+
+The two forms differ only in that C<croak_nocontext> does not take a thread
+context (C<aTHX>) parameter.  It is usually preferred as it takes up fewer
+bytes of code than plain C<Perl_croak>, and time is rarely a critical resource
+when you are about to throw an exception.
 
 =cut
 */
@@ -1790,9 +2055,12 @@ Perl_croak(pTHX_ const char *pat, ...)
 /*
 =for apidoc croak_no_modify
 
-Exactly equivalent to C<Perl_croak(aTHX_ "%s", PL_no_modify)>, but generates
-terser object code than using C<Perl_croak>.  Less code used on exception code
-paths reduces CPU cache pressure.
+This encapsulates a common reason for dying, generating terser object code than
+using the generic C<Perl_croak>.  It is exactly equivalent to
+C<Perl_croak(aTHX_ "%s", PL_no_modify)> (which expands to something like
+"Modification of a read-only value attempted").
+
+Less code used on exception code paths reduces CPU cache pressure.
 
 =cut
 */
@@ -1863,14 +2131,8 @@ Perl_warn_sv(pTHX_ SV *baseex)
 
 This is an XS interface to Perl's C<warn> function.
 
-C<pat> and C<args> are a sprintf-style format pattern and encapsulated
-argument list.  These are used to generate a string message.  If the
-message does not end with a newline, then it will be extended with
-some indication of the current location in the code, as described for
-L</mess_sv>.
-
-The error message or object will by default be written to standard error,
-but this is subject to modification by a C<$SIG{__WARN__}> handler.
+This is like C<L</warn>>, but C<args> are an encapsulated
+argument list.
 
 Unlike with L</vcroak>, C<pat> is not permitted to be null.
 
@@ -1888,18 +2150,23 @@ Perl_vwarn(pTHX_ const char* pat, va_list *args)
 
 /*
 =for apidoc warn
+=for apidoc_item warn_nocontext
 
-This is an XS interface to Perl's C<warn> function.
+These are XS interfaces to Perl's C<warn> function.
 
-Take a sprintf-style format pattern and argument list.  These are used to
-generate a string message.  If the message does not end with a newline,
-then it will be extended with some indication of the current location
-in the code, as described for L</mess_sv>.
+They take a sprintf-style format pattern and argument list, which  are used to
+generate a string message.  If the message does not end with a newline, then it
+will be extended with some indication of the current location in the code, as
+described for C<L</mess_sv>>.
 
 The error message or object will by default be written to standard error,
 but this is subject to modification by a C<$SIG{__WARN__}> handler.
 
-Unlike with L</croak>, C<pat> is not permitted to be null.
+Unlike with C<L</croak>>, C<pat> is not permitted to be null.
+
+The two forms differ only in that C<warn_nocontext> does not take a thread
+context (C<aTHX>) parameter, so is used in situations where the caller doesn't
+already have the thread context.
 
 =cut
 */
@@ -1926,6 +2193,55 @@ Perl_warn(pTHX_ const char *pat, ...)
     vwarn(pat, &args);
     va_end(args);
 }
+
+/*
+=for apidoc warner
+=for apidoc_item warner_nocontext
+
+These output a warning of the specified category (or categories) given by
+C<err>, using the sprintf-style format pattern C<pat>, and argument list.
+
+C<err> must be one of the C<L</packWARN>>, C<packWARN2>, C<packWARN3>,
+C<packWARN4> macros populated with the appropriate number of warning
+categories.  If any of the warning categories they specify is fatal, a fatal
+exception is thrown.
+
+In any event a message is generated by the pattern and arguments.  If the
+message does not end with a newline, then it will be extended with some
+indication of the current location in the code, as described for L</mess_sv>.
+
+The error message or object will by default be written to standard error,
+but this is subject to modification by a C<$SIG{__WARN__}> handler.
+
+C<pat> is not permitted to be null.
+
+The two forms differ only in that C<warner_nocontext> does not take a thread
+context (C<aTHX>) parameter, so is used in situations where the caller doesn't
+already have the thread context.
+
+These functions differ from the similarly named C<L</warn>> functions, in that
+the latter are for XS code to unconditionally display a warning, whereas these
+are for code that may be compiling a perl program, and does extra checking to
+see if the warning should be fatal.
+
+=for apidoc ck_warner
+=for apidoc_item ck_warner_d
+If none of the warning categories given by C<err> are enabled, do nothing;
+otherwise call C<L</warner>>  or C<L</warner_nocontext>> with the passed-in
+parameters;.
+
+C<err> must be one of the C<L</packWARN>>, C<packWARN2>, C<packWARN3>,
+C<packWARN4> macros populated with the appropriate number of warning
+categories.
+
+The two forms differ only in that C<ck_warner_d> should be used if warnings for
+any of the categories are by default enabled.
+
+=for apidoc vwarner
+This is like C<L</warner>>, but C<args> are an encapsulated argument list.
+
+=cut
+*/
 
 #if defined(PERL_IMPLICIT_CONTEXT)
 void
@@ -1979,7 +2295,6 @@ Perl_warner(pTHX_ U32  err, const char* pat,...)
 void
 Perl_vwarner(pTHX_ U32  err, const char* pat, va_list* args)
 {
-    dVAR;
     PERL_ARGS_ASSERT_VWARNER;
     if (
         (PL_warnhook == PERL_WARNHOOK_FATAL || ckDEAD(err)) &&
@@ -2094,7 +2409,7 @@ Perl_new_warnings_bitfield(pTHX_ STRLEN *buffer, const char *const bits,
  * For Solaris, setenv() and unsetenv() were introduced in Solaris 9, so
  * testing for HAS UNSETENV is sufficient.
  */
-#  if defined(__CYGWIN__)|| defined(__SYMBIAN32__) || defined(__riscos__) || (defined(__sun) && defined(HAS_UNSETENV)) || defined(PERL_DARWIN)
+#  if defined(__CYGWIN__)|| defined(__riscos__) || (defined(__sun) && defined(HAS_UNSETENV)) || defined(PERL_DARWIN)
 #    define MY_HAS_SETENV
 #  endif
 
@@ -2133,6 +2448,7 @@ S_env_alloc(void *current, Size_t l1, Size_t l2, Size_t l3, Size_t size)
 #  if !defined(WIN32) && !defined(NETWARE)
 
 /*
+=for apidoc_section Utility Functions
 =for apidoc my_setenv
 
 A wrapper for the C library L<setenv(3)>.  Don't use the latter, as the perl
@@ -2144,7 +2460,6 @@ version has desirable safeguards
 void
 Perl_my_setenv(pTHX_ const char *nam, const char *val)
 {
-  dVAR;
 #    ifdef __amigaos4__
   amigaos4_obtain_environ(__FUNCTION__);
 #    endif
@@ -2275,7 +2590,6 @@ my_setenv_out:
 void
 Perl_my_setenv(pTHX_ const char *nam, const char *val)
 {
-    dVAR;
     char *envstr;
     const Size_t nlen = strlen(nam);
     Size_t vlen;
@@ -2623,7 +2937,6 @@ Perl_atfork_lock(void)
 #endif
 {
 #if defined(USE_ITHREADS)
-    dVAR;
     /* locks must be held in locking order (if any) */
 #  ifdef USE_PERLIO
     MUTEX_LOCK(&PL_perlio_mutex);
@@ -2649,7 +2962,6 @@ Perl_atfork_unlock(void)
 #endif
 {
 #if defined(USE_ITHREADS)
-    dVAR;
     /* locks must be released in same order as in atfork_lock() */
 #  ifdef USE_PERLIO
     MUTEX_UNLOCK(&PL_perlio_mutex);
@@ -2723,6 +3035,7 @@ dup2(int oldfd, int newfd)
 #ifdef HAS_SIGACTION
 
 /*
+=for apidoc_section Signals
 =for apidoc rsignal
 
 A wrapper for the C library L<signal(2)>.  Don't use the latter, as the Perl
@@ -2737,7 +3050,6 @@ Perl_rsignal(pTHX_ int signo, Sighandler_t handler)
     struct sigaction act, oact;
 
 #ifdef USE_ITHREADS
-    dVAR;
     /* only "parent" interpreter can diddle signals */
     if (PL_curinterp != aTHX)
 	return (Sighandler_t) SIG_ERR;
@@ -2776,7 +3088,6 @@ int
 Perl_rsignal_save(pTHX_ int signo, Sighandler_t handler, Sigsave_t *save)
 {
 #ifdef USE_ITHREADS
-    dVAR;
 #endif
     struct sigaction act;
 
@@ -2806,7 +3117,6 @@ int
 Perl_rsignal_restore(pTHX_ int signo, Sigsave_t *save)
 {
 #ifdef USE_ITHREADS
-    dVAR;
 #endif
     PERL_UNUSED_CONTEXT;
 #ifdef USE_ITHREADS
@@ -2835,14 +3145,12 @@ Perl_rsignal(pTHX_ int signo, Sighandler_t handler)
 static Signal_t
 sig_trap(int signo)
 {
-    dVAR;
     PL_sig_trapped++;
 }
 
 Sighandler_t
 Perl_rsignal_state(pTHX_ int signo)
 {
-    dVAR;
     Sighandler_t oldsig;
 
 #if defined(USE_ITHREADS) && !defined(WIN32)
@@ -3387,7 +3695,6 @@ void *
 Perl_get_context(void)
 {
 #if defined(USE_ITHREADS)
-    dVAR;
 #  ifdef OLD_PTHREADS_API
     pthread_addr_t t;
     int error = pthread_getspecific(PL_thr_key, &t);
@@ -3408,7 +3715,6 @@ void
 Perl_set_context(void *t)
 {
 #if defined(USE_ITHREADS)
-    dVAR;
 #endif
     PERL_ARGS_ASSERT_SET_CONTEXT;
 #if defined(USE_ITHREADS)
@@ -3427,15 +3733,6 @@ Perl_set_context(void *t)
 }
 
 #endif /* !PERL_GET_CONTEXT_DEFINED */
-
-#if defined(PERL_GLOBAL_STRUCT) && !defined(PERL_GLOBAL_STRUCT_PRIVATE)
-struct perl_vars *
-Perl_GetVars(pTHX)
-{
-    PERL_UNUSED_CONTEXT;
-    return &PL_Vars;
-}
-#endif
 
 char **
 Perl_get_op_names(pTHX)
@@ -3468,7 +3765,6 @@ Perl_get_opargs(pTHX)
 PPADDR_t*
 Perl_get_ppaddr(pTHX)
 {
-    dVAR;
     PERL_UNUSED_CONTEXT;
     return (PPADDR_t*)PL_ppaddr;
 }
@@ -3632,7 +3928,6 @@ void
 Perl_init_tm(pTHX_ struct tm *ptm)	/* see mktime, strftime and asctime */
 {
 #ifdef HAS_TM_TM_ZONE
-    dVAR;
     Time_t now;
     const struct tm* my_tm;
     PERL_UNUSED_CONTEXT;
@@ -3651,8 +3946,12 @@ Perl_init_tm(pTHX_ struct tm *ptm)	/* see mktime, strftime and asctime */
 }
 
 /*
- * mini_mktime - normalise struct tm values without the localtime()
- * semantics (and overhead) of mktime().
+=for apidoc_section Time
+=for apidoc mini_mktime
+normalise S<C<struct tm>> values without the localtime() semantics (and
+overhead) of mktime().
+
+=cut
  */
 void
 Perl_mini_mktime(struct tm *ptm)
@@ -3846,13 +4145,19 @@ Perl_my_strftime(pTHX_ const char *fmt, int sec, int min, int hour, int mday, in
 {
 #ifdef HAS_STRFTIME
 
-  /* strftime(), but with a different API so that the return value is a pointer
-   * to the formatted result (which MUST be arranged to be FREED BY THE
-   * CALLER).  This allows this function to increase the buffer size as needed,
-   * so that the caller doesn't have to worry about that.
-   *
-   * Note that yday and wday effectively are ignored by this function, as
-   * mini_mktime() overwrites them */
+/*
+=for apidoc_section Time
+=for apidoc my_strftime
+strftime(), but with a different API so that the return value is a pointer
+to the formatted result (which MUST be arranged to be FREED BY THE
+CALLER).  This allows this function to increase the buffer size as needed,
+so that the caller doesn't have to worry about that.
+
+Note that yday and wday effectively are ignored by this function, as
+mini_mktime() overwrites them
+
+=cut
+ */
 
   char *buf;
   int buflen;
@@ -3950,7 +4255,7 @@ Perl_my_strftime(pTHX_ const char *fmt, int sec, int min, int hour, int mday, in
 	(dp->d_name[1] == '.' && dp->d_name[2] == '\0')))
 
 /*
-=head1 Miscellaneous Functions
+=for apidoc_section Utility Functions
 
 =for apidoc getcwd_sv
 
@@ -4349,7 +4654,7 @@ Perl_my_socketpair (int family, int type, int protocol, int fd[2]) {
 #ifdef ECONNABORTED
   errno = ECONNABORTED;	/* This would be the standard thing to do. */
 #elif defined(ECONNREFUSED)
-  errno = ECONNREFUSED;	/* E.g. Symbian does not have ECONNABORTED. */
+  errno = ECONNREFUSED;	/* some OSes might not have ECONNABORTED. */
 #else
   errno = ETIMEDOUT;	/* Desperation time. */
 #endif
@@ -4652,93 +4957,6 @@ Perl_get_hash_seed(pTHX_ unsigned char * const seed_buffer)
 #endif
 }
 
-#ifdef PERL_GLOBAL_STRUCT
-
-#define PERL_GLOBAL_STRUCT_INIT
-#include "opcode.h" /* the ppaddr and check */
-
-struct perl_vars *
-Perl_init_global_struct(pTHX)
-{
-    struct perl_vars *plvarsp = NULL;
-# ifdef PERL_GLOBAL_STRUCT
-    const IV nppaddr = C_ARRAY_LENGTH(Gppaddr);
-    const IV ncheck  = C_ARRAY_LENGTH(Gcheck);
-    PERL_UNUSED_CONTEXT;
-#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
-    /* PerlMem_malloc() because can't use even safesysmalloc() this early. */
-    plvarsp = (struct perl_vars*)PerlMem_malloc(sizeof(struct perl_vars));
-    if (!plvarsp)
-        exit(1);
-#  else
-    plvarsp = PL_VarsPtr;
-#  endif /* PERL_GLOBAL_STRUCT_PRIVATE */
-#  undef PERLVAR
-#  undef PERLVARA
-#  undef PERLVARI
-#  undef PERLVARIC
-#  define PERLVAR(prefix,var,type) /**/
-#  define PERLVARA(prefix,var,n,type) /**/
-#  define PERLVARI(prefix,var,type,init) plvarsp->prefix##var = init;
-#  define PERLVARIC(prefix,var,type,init) plvarsp->prefix##var = init;
-#  include "perlvars.h"
-#  undef PERLVAR
-#  undef PERLVARA
-#  undef PERLVARI
-#  undef PERLVARIC
-#  ifdef PERL_GLOBAL_STRUCT
-    plvarsp->Gppaddr =
-	(Perl_ppaddr_t*)
-	PerlMem_malloc(nppaddr * sizeof(Perl_ppaddr_t));
-    if (!plvarsp->Gppaddr)
-        exit(1);
-    plvarsp->Gcheck  =
-	(Perl_check_t*)
-	PerlMem_malloc(ncheck  * sizeof(Perl_check_t));
-    if (!plvarsp->Gcheck)
-        exit(1);
-    Copy(Gppaddr, plvarsp->Gppaddr, nppaddr, Perl_ppaddr_t); 
-    Copy(Gcheck,  plvarsp->Gcheck,  ncheck,  Perl_check_t); 
-#  endif
-#  ifdef PERL_SET_VARS
-    PERL_SET_VARS(plvarsp);
-#  endif
-#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
-    plvarsp->Gsv_placeholder.sv_flags = 0;
-    memset(plvarsp->Ghash_seed, 0, sizeof(plvarsp->Ghash_seed));
-#  endif
-# undef PERL_GLOBAL_STRUCT_INIT
-# endif
-    return plvarsp;
-}
-
-#endif /* PERL_GLOBAL_STRUCT */
-
-#ifdef PERL_GLOBAL_STRUCT
-
-void
-Perl_free_global_struct(pTHX_ struct perl_vars *plvarsp)
-{
-    int veto = plvarsp->Gveto_cleanup;
-
-    PERL_ARGS_ASSERT_FREE_GLOBAL_STRUCT;
-    PERL_UNUSED_CONTEXT;
-# ifdef PERL_GLOBAL_STRUCT
-#  ifdef PERL_UNSET_VARS
-    PERL_UNSET_VARS(plvarsp);
-#  endif
-    if (veto)
-        return;
-    free(plvarsp->Gppaddr);
-    free(plvarsp->Gcheck);
-#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
-    free(plvarsp);
-#  endif
-# endif
-}
-
-#endif /* PERL_GLOBAL_STRUCT */
-
 #ifdef PERL_MEM_LOG
 
 /* -DPERL_MEM_LOG: the Perl_mem_log_..() is compiled, including
@@ -4945,6 +5163,7 @@ Perl_mem_log_del_sv(const SV *sv,
 #endif /* PERL_MEM_LOG */
 
 /*
+=for apidoc_section String Handling
 =for apidoc quadmath_format_valid
 
 C<quadmath_snprintf()> is very strict about its C<format> string and will
@@ -5177,7 +5396,6 @@ Perl_my_vsnprintf(char *buffer, const Size_t len, const char *format, va_list ap
 void
 Perl_my_clearenv(pTHX)
 {
-    dVAR;
 #if ! defined(PERL_MICRO)
 #  if defined(PERL_IMPLICIT_SYS) || defined(WIN32)
     PerlEnv_clearenv();
@@ -5232,32 +5450,6 @@ Perl_my_clearenv(pTHX)
 #ifdef PERL_IMPLICIT_CONTEXT
 
 
-#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
-
-/* rather than each module having a static var holding its index,
- * use a global array of name to index mappings
- */
-int
-Perl_my_cxt_index(pTHX_ const char *my_cxt_key)
-{
-    dVAR;
-    int index;
-
-    PERL_ARGS_ASSERT_MY_CXT_INDEX;
-
-    for (index = 0; index < PL_my_cxt_index; index++) {
-	const char *key = PL_my_cxt_keys[index];
-	/* try direct pointer compare first - there are chances to success,
-	 * and it's much faster.
-	 */
-	if ((key == my_cxt_key) || strEQ(key, my_cxt_key))
-	    return index;
-    }
-    return -1;
-}
-#  endif
-
-
 /* Implements the MY_CXT_INIT macro. The first time a module is loaded,
 the global PL_my_cxt_index is incremented, and that value is assigned to
 that module's static my_cxt_index (who's address is passed as an arg).
@@ -5266,23 +5458,14 @@ void* slot is available to hang the static data off, by allocating or
 extending the interpreter's PL_my_cxt_list array */
 
 void *
-#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
-Perl_my_cxt_init(pTHX_ const char *my_cxt_key, size_t size)
-#  else
 Perl_my_cxt_init(pTHX_ int *indexp, size_t size)
-#  endif
 {
-    dVAR;
     void *p;
     int index;
 
     PERL_ARGS_ASSERT_MY_CXT_INIT;
 
-#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
-    index = Perl_my_cxt_index(aTHX_ my_cxt_key);
-#  else
     index = *indexp;
-#  endif
     /* do initial check without locking.
      * -1:    not allocated or another thread currently allocating
      *  other: already allocated by another thread
@@ -5290,45 +5473,11 @@ Perl_my_cxt_init(pTHX_ int *indexp, size_t size)
     if (index == -1) {
 	MUTEX_LOCK(&PL_my_ctx_mutex);
         /*now a stricter check with locking */
-#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
-        index = Perl_my_cxt_index(aTHX_ my_cxt_key);
-#  else
         index = *indexp;
-#  endif
         if (index == -1)
             /* this module hasn't been allocated an index yet */
-#  ifdef PERL_GLOBAL_STRUCT_PRIVATE
-            index = PL_my_cxt_index++;
-
-        /* Store the index in a global MY_CXT_KEY string to index mapping
-         * table. This emulates the perl-module static my_cxt_index var on
-         * builds which don't allow static vars */
-        if (PL_my_cxt_keys_size <= index) {
-            int old_size = PL_my_cxt_keys_size;
-            int i;
-            if (PL_my_cxt_keys_size) {
-                IV new_size = PL_my_cxt_keys_size;
-                while (new_size <= index)
-                    new_size *= 2;
-                PL_my_cxt_keys = (const char **)PerlMemShared_realloc(
-                                        PL_my_cxt_keys,
-                                        new_size * sizeof(const char *));
-                PL_my_cxt_keys_size = new_size;
-            }
-            else {
-                PL_my_cxt_keys_size = 16;
-                PL_my_cxt_keys = (const char **)PerlMemShared_malloc(
-                            PL_my_cxt_keys_size * sizeof(const char *));
-            }
-            for (i = old_size; i < PL_my_cxt_keys_size; i++) {
-                PL_my_cxt_keys[i] = 0;
-            }
-        }
-        PL_my_cxt_keys[index] = my_cxt_key;
-#  else
             *indexp = PL_my_cxt_index++;
         index = *indexp;
-#  endif
 	MUTEX_UNLOCK(&PL_my_ctx_mutex);
     }
 
@@ -6191,6 +6340,7 @@ static void atos_symbolize(atos_context* ctx,
 #endif /* #ifdef PERL_DARWIN */
 
 /*
+=for apidoc_section Display and Dump functions
 =for apidoc get_c_backtrace
 
 Collects the backtrace (aka "stacktrace") into a single linear
@@ -6436,12 +6586,13 @@ Perl_get_c_backtrace(pTHX_ int depth, int skip)
 /*
 =for apidoc free_c_backtrace
 
-Deallocates a backtrace received from get_c_bracktrace.
+Deallocates a backtrace received from get_c_backtrace.
 
 =cut
 */
 
 /*
+=for apidoc_section Display and Dump functions
 =for apidoc get_c_backtrace_dump
 
 Returns a SV containing a dump of C<depth> frames of the call stack, skipping
@@ -6449,10 +6600,10 @@ the C<skip> innermost ones.  C<depth> of 20 is usually enough.
 
 The appended output looks like:
 
-...
-1   10e004812:0082   Perl_croak   util.c:1716    /usr/bin/perl
-2   10df8d6d2:1d72   perl_parse   perl.c:3975    /usr/bin/perl
-...
+ ...
+ 1   10e004812:0082   Perl_croak   util.c:1716    /usr/bin/perl
+ 2   10df8d6d2:1d72   perl_parse   perl.c:3975    /usr/bin/perl
+ ...
 
 The fields are tab-separated.  The first column is the depth (zero
 being the innermost non-skipped frame).  In the hex:offset, the hex is
@@ -6552,7 +6703,7 @@ Perl_dump_c_backtrace(pTHX_ PerlIO* fp, int depth, int skip)
 
 #endif /* #ifdef USE_C_BACKTRACE */
 
-#ifdef PERL_TSA_ACTIVE
+#if defined(USE_ITHREADS) && defined(I_PTHREAD)
 
 /* pthread_mutex_t and perl_mutex are typedef equivalent
  * so casting the pointers is fine. */
@@ -6573,7 +6724,6 @@ int perl_tsa_mutex_destroy(perl_mutex* mutex)
 }
 
 #endif
-
 
 #ifdef USE_DTRACE
 

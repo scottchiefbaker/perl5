@@ -120,7 +120,7 @@ S_sv_derived_from_svpvn(pTHX_ SV *sv, SV *namesv, const char * name, const STRLE
 }
 
 /*
-=head1 SV Manipulation Functions
+=for apidoc_section SV Handling
 
 =for apidoc sv_derived_from_pvn
 
@@ -789,7 +789,7 @@ XS(XS_PerlIO_get_layers)
 	     AV* const av = PerlIO_get_layers(aTHX_ input ?
 					IoIFP(io) : IoOFP(io));
 	     SSize_t i;
-	     const SSize_t last = av_tindex(av);
+	     const SSize_t last = av_top_index(av);
 	     SSize_t nitem = 0;
 	     
 	     for (i = last; i >= 0; i -= 3) {
@@ -956,10 +956,10 @@ XS(XS_re_regnames)
         XSRETURN_UNDEF;
 
     av = MUTABLE_AV(SvRV(ret));
-    length = av_tindex(av);
+    length = av_count(av);
 
-    EXTEND(SP, length+1); /* better extend stack just once */
-    for (i = 0; i <= length; i++) {
+    EXTEND(SP, length); /* better extend stack just once */
+    for (i = 0; i < length; i++) {
         entry = av_fetch(av, i, FALSE);
         
         if (!entry)
@@ -1117,7 +1117,7 @@ XS(XS_NamedCapture_tie_it)
 
 XS(XS_NamedCapture_TIEHASH)
 {
-    dVAR; dXSARGS;
+    dXSARGS;
     if (items < 1)
        croak_xs_usage(cv,  "package, ...");
     {
@@ -1152,7 +1152,7 @@ XS(XS_NamedCapture_TIEHASH)
 
 XS(XS_NamedCapture_FETCH)
 {
-    dVAR; dXSARGS;
+    dXSARGS;
     dXSI32;
     PERL_UNUSED_VAR(cv); /* -W */
     PERL_UNUSED_VAR(ax); /* -Wall */
@@ -1197,7 +1197,7 @@ XS(XS_NamedCapture_FETCH)
 
 XS(XS_NamedCapture_FIRSTKEY)
 {
-    dVAR; dXSARGS;
+    dXSARGS;
     dXSI32;
     PERL_UNUSED_VAR(cv); /* -W */
     PERL_UNUSED_VAR(ax); /* -Wall */
@@ -1231,7 +1231,7 @@ XS(XS_NamedCapture_FIRSTKEY)
 /* is this still needed? */
 XS(XS_NamedCapture_flags)
 {
-    dVAR; dXSARGS;
+    dXSARGS;
     PERL_UNUSED_VAR(cv); /* -W */
     PERL_UNUSED_VAR(ax); /* -Wall */
     SP -= items;

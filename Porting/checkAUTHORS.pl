@@ -388,7 +388,7 @@ sub update_authors_files {
 
     {
         open my $fh, '>', $author_file or die "Can't open $author_file: $!";
-        binmode $fh, ':encoding(UTF-8)';
+        binmode $fh, ':raw:encoding(UTF-8)';
 
         print {$fh} $AUTHORS_header;
 
@@ -644,6 +644,9 @@ __DATA__
 #
 #  Committers.
 #
+adamh                                   \100BytesGuy
++                                       bytesguy\100users.noreply.github.com
++                                       git\100ahartley.com
 adi                                     enache\100rdslink.ro
 alanbur                                 alan.burlison\100sun.com
 +                                       alan.burlison\100uk.sun.com
@@ -720,6 +723,7 @@ merijn                                  h.m.brand\100xs4all.nl
 +                                       h.m.brand\100hccnet.nl
 +                                       merijn\100l1.procura.nl
 +                                       merijn\100a5.(none)
++                                       perl5\100tux.freedom.nl
 mhx                                     mhx-perl\100gmx.net
 +                                       mhx\100r2d2.(none)
 mst                                     mst\100shadowcat.co.uk
@@ -1000,6 +1004,7 @@ laszlo.molnar\100eth.ericsson.se        molnarl\100cdata.tvnet.hu
 +                                       ml1050\100freemail.hu
 lewart\100uiuc.edu                      lewart\100vadds.cvm.uiuc.edu
 +                                       d-lewart\100uiuc.edu
+lindblad@gmx.com                        52227507+apparluk\100users.noreply.github.com
 lkundrak\100v3.sk                       lubo.rintel\100gooddata.com
 lstein\100cshl.org                      lstein\100formaggio.cshl.org
 +                                       lstein\100genome.wi.mit.edu
@@ -1108,6 +1113,8 @@ khw\100cpan.org                         khw\100karl.(none)
 +                                       khw\100khw-desktop.(none)
 
 radu\100netsoft.ro                      rgreab\100fx.ro
+raiph                                   \100raiph
++                                       raiph.mellor\100gmail.com
 rajagopa\100pauline.schrodinger.com     rajagopa\100schrodinger.com
 raphael.manfredi\100pobox.com           raphael_manfredi\100grenoble.hp.com
 module\100renee-baecker.de              renee.baecker\100smart-websolutions.de
@@ -1128,6 +1135,7 @@ rick\100consumercontact.com             rick\100bort.ca
 rjbs\100cpan.org                        rjbs-perl-p5p\100lists.manxome.org
 +                                       perl.p5p\100rjbs.manxome.org
 +                                       rjbs\100semiotic.systems
++                                       rjbs\100users.noreply.github.com
 rjk\100linguist.dartmouth.edu           rjk\100linguist.thayer.dartmouth.edu
 +                                       rjk-perl-p5p\100tamias.net
 +                                       rjk\100tamias.net

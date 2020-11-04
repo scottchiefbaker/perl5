@@ -70,14 +70,14 @@ typedef PERL_BITFIELD16 Optype;
 #define OP_GIMME_REVERSE(flags)	((flags) & G_WANT)
 
 /*
-=head1 "Gimme" Values
+=for apidoc_section Callback Functions
 
 =for apidoc Amn|U32|GIMME_V
 The XSUB-writer's equivalent to Perl's C<wantarray>.  Returns C<G_VOID>,
 C<G_SCALAR> or C<G_ARRAY> for void, scalar or list context,
 respectively.  See L<perlcall> for a usage example.
 
-=for apidoc Amn|U32|GIMME
+=for apidoc AmnD|U32|GIMME
 A backward-compatible version of C<GIMME_V> which can only return
 C<G_SCALAR> or C<G_ARRAY>; in a void context, it returns C<G_SCALAR>.
 Deprecated.  Use C<GIMME_V> instead.
@@ -396,7 +396,7 @@ struct pmop {
 #else
 #  define PmopSTASH(o)							\
     (((o)->op_pmflags & PMf_ONCE) ? (o)->op_pmstashstartu.op_pmstash : NULL)
-#  if defined (DEBUGGING) && defined(__GNUC__) && !defined(PERL_GCC_BRACE_GROUPS_FORBIDDEN)
+#  if defined (DEBUGGING) && defined(PERL_USE_GCC_BRACE_GROUPS)
 #    define PmopSTASH_set(o,hv)		({				\
 	assert((o)->op_pmflags & PMf_ONCE);				\
 	((o)->op_pmstashstartu.op_pmstash = (hv));			\
@@ -639,7 +639,7 @@ typedef struct {
 
 
 /*
-=head1 Optree Manipulation Functions
+=for apidoc_section Optree Manipulation Functions
 
 =for apidoc Am|OP*|LINKLIST|OP *o
 Given the root of an optree, link the tree in execution order using the
@@ -713,21 +713,23 @@ struct opslab {
                                            units) */
 # ifdef PERL_DEBUG_READONLY_OPS
     bool	opslab_readonly;
-    U8          opslab_padding;         /* padding to ensure that opslab_slots is always */
-# else
-    U16         opslab_padding;         /* located at an offset with 32-bit alignment */
 # endif
     OPSLOT	opslab_slots;		/* slots begin here */
 };
 
 # define OPSLOT_HEADER		STRUCT_OFFSET(OPSLOT, opslot_op)
-# define OPSLOT_HEADER_P	(OPSLOT_HEADER/sizeof(I32 *))
 # define OpSLOT(o)		(assert_(o->op_slabbed) \
 				 (OPSLOT *)(((char *)o)-OPSLOT_HEADER))
 
+/* the slab that owns this op */
+# define OpMySLAB(o) \
+    ((OPSLAB*)((char *)((I32**)OpSLOT(o) - OpSLOT(o)->opslot_offset)-STRUCT_OFFSET(struct opslab, opslab_slots)))
 /* the first (head) opslab of the chain in which this op is allocated */
 # define OpSLAB(o) \
-    (((OPSLAB*)( (I32**)OpSLOT(o) - OpSLOT(o)->opslot_offset))->opslab_head)
+    (OpMySLAB(o)->opslab_head)
+/* calculate the slot given the owner slab and an offset */
+#define OpSLOToff(slab, offset) \
+    ((OPSLOT*)(((I32 **)&(slab)->opslab_slots)+(offset)))
 
 # define OpslabREFCNT_dec(slab)      \
 	(((slab)->opslab_refcnt == 1) \
@@ -749,7 +751,7 @@ struct block_hooks {
 };
 
 /*
-=head1 Compile-time scope hooks
+=for apidoc_section Compile-time scope hooks
 
 =for apidoc mx|U32|BhkFLAGS|BHK *hk
 Return the BHK's flags.
@@ -814,7 +816,7 @@ preprocessing token; the type of C<arg> depends on C<which>.
     STMT_START { \
 	if (PL_blockhooks) { \
 	    SSize_t i; \
-	    for (i = av_tindex(PL_blockhooks); i >= 0; i--) { \
+	    for (i = av_top_index(PL_blockhooks); i >= 0; i--) { \
 		SV *sv = AvARRAY(PL_blockhooks)[i]; \
 		BHK *hk; \
 		\
@@ -835,7 +837,7 @@ preprocessing token; the type of C<arg> depends on C<which>.
 #define RV2CVOPCV_MARK_EARLY     0x00000001
 #define RV2CVOPCV_RETURN_NAME_GV 0x00000002
 #define RV2CVOPCV_RETURN_STUB    0x00000004
-#ifdef PERL_CORE /* behaviour of this flag is subject to change: */
+#if defined(PERL_CORE) || defined(PERL_EXT) /* behaviour of this flag is subject to change: */
 # define RV2CVOPCV_MAYBE_NAME_GV  0x00000008
 #endif
 #define RV2CVOPCV_FLAG_MASK      0x0000000f /* all of the above */
@@ -847,7 +849,7 @@ preprocessing token; the type of C<arg> depends on C<which>.
 #define OP_LVALUE_NO_CROAK 1
 
 /*
-=head1 Custom Operators
+=for apidoc_section Custom Operators
 
 =for apidoc Am|U32|XopFLAGS|XOP *xop
 Return the XOP's flags.
@@ -857,7 +859,7 @@ Return a member of the XOP structure.  C<which> is a cpp token
 indicating which entry to return.  If the member is not set
 this will return a default value.  The return type depends
 on C<which>.  This macro evaluates its arguments more than
-once.  If you are using C<Perl_custom_op_xop> to retreive a
+once.  If you are using C<Perl_custom_op_xop> to retrieve a
 C<XOP *> from a C<OP *>, use the more efficient L</XopENTRYCUSTOM> instead.
 
 =for apidoc Am||XopENTRYCUSTOM|const OP *o|which
@@ -943,7 +945,7 @@ typedef enum {
     (Perl_custom_op_get_field(x, XOPe_xop_ptr).xop_ptr)
 
 /*
-=head1 Optree Manipulation Functions
+=for apidoc_section Optree Manipulation Functions
 
 =for apidoc Am|const char *|OP_NAME|OP *o
 Return the name of the provided OP.  For core ops this looks up the name
@@ -1058,7 +1060,7 @@ C<sib> is non-null. For a higher-level interface, see C<L</op_sibling_splice>>.
 #define newSUB(f, o, p, b)	newATTRSUB((f), (o), (p), NULL, (b))
 
 /*
-=head1 Hook manipulation
+=for apidoc_section Hook manipulation
 */
 
 #ifdef USE_ITHREADS

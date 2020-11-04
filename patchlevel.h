@@ -8,6 +8,32 @@
  *
  */
 
+/*
+=for apidoc_section Versioning
+
+=for apidoc AmDnU|U8|PERL_REVISION
+The major number component of the perl interpreter currently being compiled or
+executing.  This has been C<5> from 1993 into 2020.
+
+Instead use one of the version comparison macros.  See C<L</PERL_VERSION_EQ>>.
+
+=for apidoc AmDnU|U8|PERL_VERSION
+The minor number component of the perl interpreter currently being compiled or
+executing.  Between 1993 into 2020, this has ranged from 0 to 33.
+
+Instead use one of the version comparison macros.  See C<L</PERL_VERSION_EQ>>.
+
+=for apidoc AmDnU|U8|PERL_SUBVERSION
+The micro number component of the perl interpreter currently being compiled or
+executing.  In stable releases this gives the dot release number for
+maintenance updates.  In development releases this gives a tag for a snapshot
+of the status at various points in the development cycle.
+
+Instead use one of the version comparison macros.  See C<L</PERL_VERSION_EQ>>.
+
+=cut
+*/
+
 #ifndef __PATCHLEVEL_H_INCLUDED__
 
 /* do not adjust the whitespace! Configure expects the numbers to be
@@ -15,7 +41,7 @@
 
 #define PERL_REVISION	5		/* age */
 #define PERL_VERSION	33		/* epoch */
-#define PERL_SUBVERSION	0		/* generation */
+#define PERL_SUBVERSION	4		/* generation */
 
 /* The following numbers describe the earliest compatible version of
    Perl ("compatibility" here being defined as sufficient binary/API
@@ -36,7 +62,7 @@
 */
 #define PERL_API_REVISION	5
 #define PERL_API_VERSION	33
-#define PERL_API_SUBVERSION	0
+#define PERL_API_SUBVERSION	4
 /*
    XXX Note:  The selection of non-default Configure options, such
    as -Duselonglong may invalidate these settings.  Currently, Configure

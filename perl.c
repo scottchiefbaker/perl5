@@ -83,7 +83,6 @@ static I32 read_e_script(pTHX_ int idx, SV *buf_sv, int maxlen);
 static void
 S_init_tls_and_interp(PerlInterpreter *my_perl)
 {
-    dVAR;
     if (!PL_curinterp) {			
 	PERL_SET_INTERP(my_perl);
 #if defined(USE_ITHREADS)
@@ -117,7 +116,6 @@ S_init_tls_and_interp(PerlInterpreter *my_perl)
 void
 Perl_sys_init(int* argc, char*** argv)
 {
-    dVAR;
 
     PERL_ARGS_ASSERT_SYS_INIT;
 
@@ -129,7 +127,6 @@ Perl_sys_init(int* argc, char*** argv)
 void
 Perl_sys_init3(int* argc, char*** argv, char*** env)
 {
-    dVAR;
 
     PERL_ARGS_ASSERT_SYS_INIT3;
 
@@ -142,7 +139,6 @@ Perl_sys_init3(int* argc, char*** argv, char*** env)
 void
 Perl_sys_term(void)
 {
-    dVAR;
     if (!PL_veto_cleanup) {
 	PERL_SYS_TERM_BODY();
     }
@@ -181,7 +177,7 @@ perl_alloc_using(struct IPerlMem* ipM, struct IPerlMem* ipMS,
 #else
 
 /*
-=head1 Embedding Functions
+=for apidoc_section Embedding and Interpreter Cloning
 
 =for apidoc perl_alloc
 
@@ -220,7 +216,6 @@ Initializes a new Perl interpreter.  See L<perlembed>.
 void
 perl_construct(pTHXx)
 {
-    dVAR;
 
     PERL_ARGS_ASSERT_PERL_CONSTRUCT;
 
@@ -421,13 +416,6 @@ perl_construct(pTHXx)
     }
 #endif /* HAS_MMAP */
 
-#if defined(HAS_TIMES) && defined(PERL_NEED_TIMESBASE)
-    PL_timesbase.tms_utime  = 0;
-    PL_timesbase.tms_stime  = 0;
-    PL_timesbase.tms_cutime = 0;
-    PL_timesbase.tms_cstime = 0;
-#endif
-
     PL_osname = Perl_savepvn(aTHX_ STR_WITH_LEN(OSNAME));
 
     PL_registered_mros = newHV();
@@ -593,7 +581,6 @@ interpret specific numeric values as having specific meanings.
 int
 perl_destruct(pTHXx)
 {
-    dVAR;
     volatile signed char destruct_level;  /* see possible values in intrpvar.h */
     HV *hv;
 #ifdef DEBUG_LEAKING_SCALARS_FORK_DUMP
@@ -1541,7 +1528,6 @@ Releases a Perl interpreter.  See L<perlembed>.
 void
 perl_free(pTHXx)
 {
-    dVAR;
 
     PERL_ARGS_ASSERT_PERL_FREE;
 
@@ -1610,11 +1596,7 @@ __attribute__((destructor))
 #endif
 perl_fini(void)
 {
-    dVAR;
     if (
-#ifdef PERL_GLOBAL_STRUCT_PRIVATE
-        my_vars &&
-#endif
         PL_curinterp && !PL_veto_cleanup)
 	FREE_THREAD_KEY;
 }
@@ -1700,7 +1682,6 @@ bug is due to be fixed in Perl 5.30.
 int
 perl_parse(pTHXx_ XSINIT_t xsinit, int argc, char **argv, char **env)
 {
-    dVAR;
     I32 oldscope;
     int ret;
     dJMPENV;
@@ -2096,7 +2077,6 @@ S_Internals_V(pTHX_ CV *cv)
 STATIC void *
 S_parse_body(pTHX_ char **env, XSINIT_t xsinit)
 {
-    dVAR;
     PerlIO *rsfp;
     int argc = PL_origargc;
     char **argv = PL_origargv;
@@ -2105,6 +2085,7 @@ S_parse_body(pTHX_ char **env, XSINIT_t xsinit)
     char c;
     bool doextract = FALSE;
     const char *cddir = NULL;
+    bool minus_e = FALSE; /* both -e and -E */
 #ifdef USE_SITECUSTOMIZE
     bool minus_f = FALSE;
 #endif
@@ -2187,6 +2168,7 @@ S_parse_body(pTHX_ char **env, XSINIT_t xsinit)
 	    /* FALLTHROUGH */
 	case 'e':
 	    forbid_setid('e', FALSE);
+        minus_e = TRUE;
 	    if (!PL_e_script) {
 		PL_e_script = newSVpvs("");
 		add_read_e_script = TRUE;
@@ -2480,7 +2462,7 @@ S_parse_body(pTHX_ char **env, XSINIT_t xsinit)
     if (xsinit)
 	(*xsinit)(aTHX);	/* in case linked C routines want magical variables */
 #ifndef PERL_MICRO
-#if defined(VMS) || defined(WIN32) || defined(DJGPP) || defined(__CYGWIN__) || defined(SYMBIAN)
+#if defined(VMS) || defined(WIN32) || defined(DJGPP) || defined(__CYGWIN__)
     init_os_extras();
 #endif
 #endif
@@ -2505,9 +2487,6 @@ S_parse_body(pTHX_ char **env, XSINIT_t xsinit)
      * PL_utf8locale is conditionally turned on by
      * locale.c:Perl_init_i18nl10n() if the environment
      * look like the user wants to use UTF-8. */
-#if defined(__SYMBIAN32__)
-    PL_unicode = PERL_UNICODE_STD_FLAG; /* See PERL_SYMBIAN_CONSOLE_UTF8. */
-#endif
 #  ifndef PERL_IS_MINIPERL
     if (PL_unicode) {
 	 /* Requires init_predump_symbols(). */
@@ -2571,6 +2550,8 @@ S_parse_body(pTHX_ char **env, XSINIT_t xsinit)
 	filter_add(read_e_script, NULL);
 
     /* now parse the script */
+    if (minus_e == FALSE)
+        PL_hints |= HINTS_DEFAULT; /* after init_main_stash ; need to be after init_predump_symbols */
 
     SETERRNO(0,SS_NORMAL);
     if (yyparse(GRAMPROG) || PL_parser->error_count) {
@@ -2765,7 +2746,7 @@ S_run_body(pTHX_ I32 oldscope)
 }
 
 /*
-=head1 SV Manipulation Functions
+=for apidoc_section SV Handling
 
 =for apidoc get_sv
 
@@ -2791,7 +2772,7 @@ Perl_get_sv(pTHX_ const char *name, I32 flags)
 }
 
 /*
-=head1 Array Manipulation Functions
+=for apidoc_section AV Handling
 
 =for apidoc get_av
 
@@ -2821,7 +2802,7 @@ Perl_get_av(pTHX_ const char *name, I32 flags)
 }
 
 /*
-=head1 Hash Manipulation Functions
+=for apidoc_section HV Handling
 
 =for apidoc get_hv
 
@@ -2848,7 +2829,7 @@ Perl_get_hv(pTHX_ const char *name, I32 flags)
 }
 
 /*
-=head1 CV Manipulation Functions
+=for apidoc_section CV Handling
 
 =for apidoc get_cvn_flags
 
@@ -2900,7 +2881,7 @@ Perl_get_cv(pTHX_ const char *name, I32 flags)
 
 /*
 
-=head1 Callback Functions
+=for apidoc_section Callback Functions
 
 =for apidoc call_argv
 
@@ -3007,7 +2988,6 @@ I32
 Perl_call_sv(pTHX_ SV *sv, volatile I32 flags)
           		/* See G_* flags in cop.h */
 {
-    dVAR;
     LOGOP myop;		/* fake syntax tree node */
     METHOP method_op;
     I32 oldmark;
@@ -3161,7 +3141,6 @@ Perl_eval_sv(pTHX_ SV *sv, I32 flags)
 
           		/* See G_* flags in cop.h */
 {
-    dVAR;
     UNOP myop;		/* fake syntax tree node */
     volatile I32 oldmark;
     volatile I32 retval = 0;
@@ -3296,7 +3275,7 @@ Perl_eval_pv(pTHX_ const char *p, I32 croak_on_error)
 /* Require a module. */
 
 /*
-=head1 Embedding Functions
+=for apidoc_section Embedding and Interpreter Cloning
 
 =for apidoc require_pv
 
@@ -3447,7 +3426,6 @@ Perl_get_debug_opts(pTHX_ const char **s, bool givehelp)
 const char *
 Perl_moreswitches(pTHX_ const char *s)
 {
-    dVAR;
     UV rschar;
     const char option = *s; /* used to remember option in -m/-M code */
 
@@ -3861,10 +3839,6 @@ S_minus_v(pTHX)
 	PerlIO_printf(PIO_stdout,
 		      "BS2000 (POSIX) port by Start Amadeus GmbH, 1998-1999\n");
 #endif
-#ifdef __SYMBIAN32__
-	PerlIO_printf(PIO_stdout,
-		      "Symbian port by Nokia, 2004-2005\n");
-#endif
 #ifdef BINARY_BUILD_NOTICE
 	BINARY_BUILD_NOTICE;
 #endif
@@ -4146,7 +4120,6 @@ S_validate_suid(pTHX_ PerlIO *rsfp)
     PERL_ARGS_ASSERT_VALIDATE_SUID;
 
     if (my_euid != my_uid || my_egid != my_gid) {	/* (suidperl doesn't exist, in fact) */
-	dVAR;
         int fd = PerlIO_fileno(rsfp);
         Stat_t statbuf;
         if (fd < 0 || PerlLIO_fstat(fd, &statbuf) < 0) { /* may be either wrapped or real suid */
@@ -4564,7 +4537,6 @@ STATIC void
 S_init_postdump_symbols(pTHX_ int argc, char **argv, char **env)
 {
 #ifdef USE_ITHREADS
-    dVAR;
 #endif
     GV* tmpgv;
 
@@ -4767,7 +4739,7 @@ S_init_perllib(pTHX)
     }
 }
 
-#if defined(DOSISH) || defined(__SYMBIAN32__)
+#if defined(DOSISH)
 #    define PERLLIB_SEP ';'
 #elif defined(__VMS)
 #    define PERLLIB_SEP PL_perllib_sep
@@ -5020,7 +4992,7 @@ S_incpush(pTHX_ const char *const dir, STRLEN len, U32 flags)
 #ifdef PERL_IS_MINIPERL
 	    const Size_t extra = 0;
 #else
-	    Size_t extra = av_tindex(av) + 1;
+	    Size_t extra = av_count(av);
 #endif
 	    av_unshift(inc, extra + push_basedir);
 	    if (push_basedir)
@@ -5106,7 +5078,7 @@ Perl_call_list(pTHX_ I32 oldscope, AV *paramList)
 
     PERL_ARGS_ASSERT_CALL_LIST;
 
-    while (av_tindex(paramList) >= 0) {
+    while (av_count(paramList) > 0) {
 	cv = MUTABLE_CV(av_shift(paramList));
 	if (PL_savebegin) {
 	    if (paramList == PL_beginav) {

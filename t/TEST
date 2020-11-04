@@ -90,7 +90,7 @@ my %temp_needs_dot  = map { $_ => 1 } qw(
 # but allow override via *_TEST env var if wanted
 # (e.g. PERL5OPT_TEST=-d:NYTProf)
 my @bad_env_vars = qw(
-    PERL5LIB PERLLIB PERL5OPT
+    PERL5LIB PERLLIB PERL5OPT PERL_UNICODE
     PERL_YAML_BACKEND PERL_JSON_BACKEND
 );
 
@@ -178,7 +178,8 @@ if ($show_elapsed_time) { require Time::HiRes }
 my %timings = (); # testname => [@et] pairs if $show_elapsed_time.
 
 # Roll your own File::Find!
-sub _find_tests { our @found=(); push @ARGV, _find_files('\.t$', $_[0]) }
+our @found;
+sub _find_tests { @found=(); push @ARGV, _find_files('\.t$', $_[0]) }
 sub _find_files {
     my($patt, @dirs) = @_;
     for my $dir (@dirs) {

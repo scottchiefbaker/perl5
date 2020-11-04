@@ -53,6 +53,24 @@ typedef signed char yysigned_char;
 # define YY_NULLPTR NULL
 #endif
 
+#ifndef YY_CAST
+# ifdef __cplusplus
+#  define YY_CAST(Type, Val) static_cast<Type> (Val)
+#  define YY_REINTERPRET_CAST(Type, Val) reinterpret_cast<Type> (Val)
+# else
+#  define YY_CAST(Type, Val) ((Type) (Val))
+#  define YY_REINTERPRET_CAST(Type, Val) ((Type) (Val))
+# endif
+#endif
+
+#ifndef YY_ATTRIBUTE_UNUSED
+# if defined __GNUC__ && 2 < __GNUC__ + (7 <= __GNUC_MINOR__)
+#  define YY_ATTRIBUTE_UNUSED __attribute__ ((__unused__))
+# else
+#  define YY_ATTRIBUTE_UNUSED
+# endif
+#endif
+
 /* contains all the parser state tables; auto-generated from perly.y */
 #include "perly.tab"
 
@@ -247,7 +265,6 @@ S_clear_yystack(pTHX_  const yy_parser *parser)
 int
 Perl_yyparse (pTHX_ int gramtype)
 {
-    dVAR;
     int yystate;
     int yyn;
     int yyresult;
