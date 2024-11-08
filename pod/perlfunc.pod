@@ -6561,32 +6561,61 @@ X<rand> X<random>
 
 =for Pod::Functions retrieve the next pseudorandom number
 
-Returns a random fractional number greater than or equal to C<0> and less
+Returns a random fractional number greater than or equal to C<0> and B<less>
 than the value of EXPR.  (EXPR should be positive.)  If EXPR is
-omitted, the value C<1> is used.  Currently EXPR with the value C<0> is
-also special-cased as C<1> (this was undocumented before Perl 5.8.0
-and is subject to change in future versions of Perl).  Automatically calls
-L<C<srand>|/srand EXPR> unless L<C<srand>|/srand EXPR> has already been
-called.  See also L<C<srand>|/srand EXPR>.
+omitted, the value C<1> is used.
 
-Apply L<C<int>|/int EXPR> to the value returned by L<C<rand>|/rand EXPR>
-if you want random integers instead of random fractional numbers.  For
-example,
+    my $num1 = rand();        # Random float at least 0 and below 1
+    my $num2 = rand(7);       # Random float at least 0 and below 7
+    my $num3 = int(rand(10)); # Random integer at least 0 and below 10
 
-    int(rand(10))
+B<Notes:>
 
-returns a random integer between C<0> and C<9>, inclusive.
+=over
 
-(Note: If your rand function consistently returns numbers that are too
-large or too small, then your version of Perl was probably compiled
-with the wrong number of RANDBITS.)
+=item *
+
+Calling C<rand> automatically calls L<C<srand>|/srand EXPR> unless
+srand has already been called.
+
+=item *
+
+Currently EXPR with the value C<0> is special-cased as C<1>. This was
+undocumented before Perl 5.8.0 and is subject to change in future versions of
+Perl.
+
+=item *
+
+As of Perl v5.20.0 C<rand()> uses the C<drand48> pseudorandom number generator
+to generate random numbers. As a PRNG C<drand48> should be sufficient for most
+non-cryptographic needs. If you need cryptographic random numbers check CPAN
+for crypto safe alternatives.
+
+=back
+
+=over
+
+=item B<Security:>
 
 B<L<C<rand>|/rand EXPR> is not cryptographically secure.  You should not rely
 on it in security-sensitive situations.>  As of this writing, a
 number of third-party CPAN modules offer random number generators
 intended by their authors to be cryptographically secure,
-including: L<Data::Entropy>, L<Crypt::Random>, L<Math::Random::Secure>,
-and L<Math::TrulyRandom>.
+including:
+
+=back
+
+=over
+
+=item * L<Data::Entropy>
+
+=item * L<Crypt::Random>
+
+=item * L<Math::Random::Secure>
+
+=item * L<Math::TrulyRandom>
+
+=back
 
 =item read FILEHANDLE,SCALAR,LENGTH,OFFSET
 X<read> X<file, read>
@@ -8951,11 +8980,8 @@ startup, and changing it during the program flow will not affect the
 currently running process. See L<perlrun> for more details.
 
 B<L<C<rand>|/rand EXPR> is not cryptographically secure.  You should not rely
-on it in security-sensitive situations.>  As of this writing, a
-number of third-party CPAN modules offer random number generators
-intended by their authors to be cryptographically secure,
-including: L<Data::Entropy>, L<Crypt::Random>, L<Math::Random::Secure>,
-and L<Math::TrulyRandom>.
+on it in security-sensitive situations.> See documentation of C<rand> for
+a list of suitable alternatives.
 
 =item stat FILEHANDLE
 X<stat> X<file, status> X<ctime>
