@@ -6686,6 +6686,14 @@ X<read> X<file, read>
 
 =for Pod::Functions fixed-length buffered input from a filehandle
 
+    open(my $FH, "<", "input.txt") or die("Cannot open file");
+
+    my $buf = "";
+    my $num = 0;
+
+    $num = read($FH, $buf, 32);       # Read the first 32 bytes
+    $num = read($FH, $buf, 16, 1024); # Read 16 bytes at position 1024
+
 Attempts to read LENGTH I<characters> of data into variable SCALAR
 from the specified FILEHANDLE.  Returns the number of characters
 actually read, C<0> at end of file, or undef if there was an error (in
