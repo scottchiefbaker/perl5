@@ -4680,6 +4680,14 @@ PERL_STATIC_INLINE U32 S_ptr_hash(PTRV u) {
     return (U32)u;
 }
 
+/* Variant of SmartMix64 that has been recommended several times */
+U64 hash64(U64 x) {
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    x =  x ^ (x >> 31);
+    return x;
+}
+
 U64
 Perl_seed(pTHX)
 {
@@ -4737,7 +4745,7 @@ Perl_seed(pTHX)
     UV time_ptr  = PTR2UV(&when);
 
     /* Mix all the states together with XOR and then hash them */
-    U64 ret = ptr_hash(uptime) ^ ptr_hash(pid) ^ ptr_hash(stack_ptr) ^ ptr_hash(time_ptr);
+    U64 ret = hash64(uptime) ^ hash64(pid) ^ hash64(stack_ptr) ^ hash64(time_ptr);
 
     /* PerlIO_printf(Perl_debug_log, "XXXX: TIME:%lu PID:%lu Stack:%lu PTR:%lu\n", uptime, pid, stack_ptr, time_ptr); */
     /* PerlIO_printf(Perl_debug_log, "SEED: %u\n", ret); */
