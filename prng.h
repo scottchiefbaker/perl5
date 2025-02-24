@@ -1,3 +1,18 @@
+////////////////////////////////////////////////////////////////////////////////
+// Steps to add a new PRNG
+//
+// 1. Add a Perl_{name}_seed() and a Perl_{name}_random_double() function below
+// 2. Add lines to embed.fnc with prototype information for these functions:
+//      TXop    |double |{name}_random_double
+//      TXop    |void   |{name}_seed|U64 seed1
+// 3. Update Configure to use the newly added PRNG:
+//      randfunc=Perl_{name}_random_double
+//      drand01="Perl_{name}_random_double()"
+//      seedfunc="Perl_{name}_seed"
+//      randseedtype=U64
+// 4. Compile: /bin/bash ./Configure -DDEBUGGING -des && make -j8
+////////////////////////////////////////////////////////////////////////////////
+
 #include <math.h>
 #include <stdint.h>
 
