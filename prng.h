@@ -100,3 +100,48 @@ Perl_pcg32_random_double()
 
 	return ret;
 }
+
+//////////////////////////////////////////////////////////////
+// xoroshiro128** functions
+//////////////////////////////////////////////////////////////
+
+static inline uint64_t rotl(const uint64_t x, int k) {
+	return (x << k) | (x >> (64 - k));
+}
+
+static uint64_t XOSSS_SEED[2];
+
+// Perl can only send one seed, so we have to deterministically
+// create the other seeds needed for our PRNG
+void
+Perl_xoroshiro128starstar_seed(U64 seed) {
+	XOSSS_SEED[0] = hash_msh(seed);
+	XOSSS_SEED[1] = hash_msh(XOSSS_SEED[0]);
+
+	DEBUG_U(PerlIO_printf(Perl_error_log, "Xoroshiro128** INIT: %lu => %lu / %lu\n", seed, XOSSS_SEED[0], XOSSS_SEED[1]));
+}
+
+U64
+xoroshiro128starstar_rand64()
+{
+	const uint64_t s0 = XOSSS_SEED[0];
+	uint64_t s1 = XOSSS_SEED[1];
+	const uint64_t result = rotl(s0 * 5, 7) * 9;
+
+	s1 ^= s0;
+	XOSSS_SEED[0] = rotl(s0, 24) ^ s1 ^ (s1 << 16); // a, b
+	XOSSS_SEED[1] = rotl(s1, 37); // c
+
+	return result;
+}
+
+double
+Perl_xoroshiro128starstar_random_double()
+{
+	U64 num    = xoroshiro128starstar_rand64();
+	double ret = uint64_to_double(num);
+
+	/*DEBUG_U(PerlIO_printf(Perl_error_log, "Xoroshiro128** Double: %lu => %0.15f\n", num, ret));*/
+
+	return ret;
+}

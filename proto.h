@@ -5655,6 +5655,14 @@ Perl_write_to_stderr(pTHX_ SV *msv)
 #define PERL_ARGS_ASSERT_WRITE_TO_STDERR        \
         assert(msv)
 
+PERL_CALLCONV double
+Perl_xoroshiro128starstar_random_double(void);
+#define PERL_ARGS_ASSERT_XOROSHIRO128STARSTAR_RANDOM_DOUBLE
+
+PERL_CALLCONV void
+Perl_xoroshiro128starstar_seed(U64 seed1);
+#define PERL_ARGS_ASSERT_XOROSHIRO128STARSTAR_SEED
+
 PERL_CALLCONV void
 Perl_xs_boot_epilog(pTHX_ const SSize_t ax);
 #define PERL_ARGS_ASSERT_XS_BOOT_EPILOG

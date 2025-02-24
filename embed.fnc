@@ -2537,6 +2537,10 @@ p	|U32	|parse_unicode_opts					\
 TXop	|double |pcg32_random_double
 TXop	|void	|pcg32_seed	|U64 seed1
 
+TXop	|double |xoroshiro128starstar_random_double
+TXop	|void	|xoroshiro128starstar_seed				\
+				|U64 seed1
+
 : peephole optimiser
 p	|void	|peep		|NULLOK OP *o
 
