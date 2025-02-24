@@ -3566,6 +3566,14 @@ Perl_parser_free(pTHX_ const yy_parser *parser)
 #define PERL_ARGS_ASSERT_PARSER_FREE            \
         assert(parser)
 
+PERL_CALLCONV double
+Perl_pcg32_random_double(void);
+#define PERL_ARGS_ASSERT_PCG32_RANDOM_DOUBLE
+
+PERL_CALLCONV void
+Perl_pcg32_seed(U64 seed1);
+#define PERL_ARGS_ASSERT_PCG32_SEED
+
 PERL_CALLCONV void
 Perl_peep(pTHX_ OP *o)
         __attribute__visibility__("hidden");
@@ -4297,7 +4305,7 @@ Perl_scan_word(pTHX_ char *s, char *dest, STRLEN destlen, int allow_package, STR
 #define PERL_ARGS_ASSERT_SCAN_WORD              \
         assert(s); assert(dest); assert(slp)
 
-PERL_CALLCONV U32
+PERL_CALLCONV U64
 Perl_seed(pTHX);
 #define PERL_ARGS_ASSERT_SEED
 

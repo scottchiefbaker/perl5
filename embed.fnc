@@ -2534,6 +2534,8 @@ Adpx	|OP *	|parse_termexpr |U32 flags
 : Used in locale.c and perl.c
 p	|U32	|parse_unicode_opts					\
 				|NN const char **popt
+TXop	|double |pcg32_random_double
+TXop	|void	|pcg32_seed	|U64 seed1
 
 : peephole optimiser
 p	|void	|peep		|NULLOK OP *o
@@ -3040,7 +3042,7 @@ EXpx	|char * |scan_word	|NN char *s				\
 				|STRLEN destlen 			\
 				|int allow_package			\
 				|NN STRLEN *slp
-Cp	|U32	|seed
+Cp	|U64	|seed
 : Only used by perl.c/miniperl.c, but defined in caretx.c
 ep	|void	|set_caret_X
 CTdp	|void	|set_context	|NN void *t
