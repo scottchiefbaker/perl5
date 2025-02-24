@@ -21349,17 +21349,11 @@ esac
 #randbits=48
 #randseedtype=U32
 
-# Use xoroshiro128** as the PRNG for rand()
-randfunc=Perl_xoroshiro128starstar_random_double
-drand01="Perl_xoroshiro128starstar_random_double()"
-seedfunc="Perl_xoroshiro128starstar_seed"
-randseedtype=U64
-
 # Use PCG32 as the PRNG for rand()
-#randfunc=Perl_pcg32_random_double
-#drand01="Perl_pcg32_random_double()"
-#seedfunc="Perl_pcg32_seed"
-#randseedtype=U64
+randfunc=Perl_pcg32_random_double
+drand01="Perl_pcg32_random_double()"
+seedfunc="Perl_pcg32_seed"
+randseedtype=U64
 
 : Probe whether dtrace builds an object, as newer Illumos requires an input
 : object file that uses at least one of the probes defined in the .d file
